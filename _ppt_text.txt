@@ -1,0 +1,31 @@
+
+
+===== SLIDE 1 =====
+Smart CampusNavigation System
+Members:-
+Tanisha Bhavsar:-2403051457012     Ayaz Multani:-2303051051439
+Nikita Vaghela:-2403051057151        Reni Patel:-2303051051446
+
+
+===== SLIDE 2 =====
+DFD level 0
+
+
+===== SLIDE 3 =====
+DFD level 1
+
+
+===== SLIDE 4 =====
+DFD level 2- Admin
+
+
+===== SLIDE 5 =====
+DFD level 2- User/Student
+
+
+===== SLIDE 6 =====
+ER Diagram
+
+
+===== SLIDE 7 =====
+Use Case Diagram

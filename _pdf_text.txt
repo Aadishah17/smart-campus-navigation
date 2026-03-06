@@ -1,0 +1,107 @@
+
+
+===== PAGE 1 =====
+Smart campus navigation system:
+Problem Statement :
+Navigating large university campuses can be challenging for students, faculty, and visitors, 
+especially newcomers who are unfamiliar with the campus layout. Traditional campus maps 
+are often static, difficult to interpret, and do not provide real-time guidance. Moreover, users 
+lack quick access to contextual information about various campus locations, which could 
+help them understand the purpose and facilities available at each spot.
+There is a need for a smart, interactive navigation system that can provide real-time location 
+tracking, calculate the shortest routes between any two points on campus, and offer on-the-
+spot information about nearby buildings and facilities through an AI assistant. Such a system 
+will improve campus accessibility, reduce confusion, save time, and enhance the overall user 
+experience.
+🔍  Speciﬁc Objectives
+To design an interactive and responsive user interface using modern frontend 
+technologies.
+To collect and store campus location data (latitude and longitude) in a structured 
+database.
+To implement shortest path algorithms for efficient navigation within the campus.
+To integrate GPS-based user location tracking for real-time navigation.
+To provide an AI assistant that gives contextual information about nearby campus 
+locations.
+To develop a scalable backend system for handling navigation logic and data 
+management.
+📌  Project Scope
+The scope of the Smart Campus Navigation System includes:
+Web-based navigation within the university campus.
+Display of campus map using open-source map services.
+Real-time tracking of the user’s current location using GPS.
+Route calculation between selected source and destination points.
+AI-assisted information delivery for important campus buildings and facilities.
+Storage and retrieval of campus location details from a database.
+Support for future enhancements such as mobile app integration and voice-based 
+navigation.
+
+===== PAGE 2 =====
+What Exactly Is a Smart Campus Navigation System?
+Think of it like Google Maps but only for your college campus.
+It helps:
+New students ﬁnd buildings, labs, hostels
+Visitors reach offices, canteens
+Students locate events, classrooms
+Find shortest path between two points inside campus
+Project Features:
+Campus map
+Buildings & locations
+Shortest path
+Live user location (GPS)
+Mobile / Web UI
+Overall System Architecture:
+Frontend [Figma + React js]
+    ⬇
+    (GPS location)
+    ⬇
+Backend Server (Node.js / Flask)
+    ⬇
+     Campus graph data
+    ⬇
+Database (MongoDB)
+1. Frontend:
+STEP 1 :  Create Figma Frames --
+Splash / Welcome Screen
+Home / Dashboard Screen
+Map Screen
+Location Selection Screen
+Route Display Screen
+
+===== PAGE 3 =====
+AI Assistant Popup
+AI Assistant Chat Screen
+Voice Assistant Permission Screen
+Location Details Screen
+Search Location Screen
+Settings Screen
+About Project Screen
+Location Permission Error Screen
+No Route Found Screen
+STEP 2: Convert Figma → FRONTEND CODE
+ Create React Project
+ Match Figma Frames → React Components
+Use Figma Inspect → CSS
+Add Real Functionality [Map & GPS]
+STEP 3: BACKEND 
+Setup Backend
+Basic Server
+Database (MongoDB)
+Shortest Path Logic (Dijkstra)
+STEP 4: CONNECT FRONTEND ↔ BACKEND
+COMPLETE  FLOW ⬇
+1. Figma → Design
+2. React → UI + Logic
+3. Backend → Data + Algorithm
+4. Map → Visualization
+5. GPS → User location
+➡ Tools Needed:
+1.Frontend:
+Figma
+Vs Code
+React js
+2.Backend:
+
+===== PAGE 4 =====
+Node js
+MongoDB
+Postman
