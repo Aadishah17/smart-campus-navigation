@@ -5,18 +5,19 @@ function SplashPage() {
     <div className="splash-page">
       <div className="splash-overlay" />
       <section className="splash-content">
-        <p className="eyebrow">Smart Campus Navigation System</p>
-        <h1>Navigate Campus Faster with Live GPS and AI Guidance</h1>
+        <p className="eyebrow">Parul University Smart Navigation</p>
+        <h1>Find buildings, hostels, food courts, and smooth campus routes without drifting off-site.</h1>
         <p>
-          Built for students, faculty, and visitors to find buildings, discover nearby
-          facilities, and follow shortest routes inside campus.
+          Built around validated Parul University coordinates with live GPS tracking,
+          map-safe campus fallback, nearby discovery, and route guidance for students,
+          staff, and visitors.
         </p>
         <div className="splash-actions">
           <Link to="/dashboard" className="primary-button">
-            Open Dashboard
+            Open Navigator
           </Link>
           <Link to="/about" className="ghost-button">
-            Project Scope
+            View Project Scope
           </Link>
         </div>
       </section>
@@ -25,4 +26,3 @@ function SplashPage() {
 }
 
 export default SplashPage;
-

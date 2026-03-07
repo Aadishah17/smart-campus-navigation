@@ -62,7 +62,7 @@ class _SplashScreenState extends State<SplashScreen> {
               Icon(Icons.map_rounded, color: Color(0xFF84E5DB), size: 62),
               SizedBox(height: 14),
               Text(
-                'Smart Campus Navigation',
+                'Parul University Navigator',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
@@ -71,7 +71,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
               SizedBox(height: 8),
               Text(
-                'Live Integrated Maps',
+                'Campus-first live wayfinding',
                 style: TextStyle(color: Color(0xFFA8B2B8), fontSize: 14),
               ),
               SizedBox(height: 20),

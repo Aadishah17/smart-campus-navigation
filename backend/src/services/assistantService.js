@@ -40,7 +40,7 @@ function generateAssistantReply({ message, userPosition, locations }) {
   if (!safeMessage) {
     return {
       reply:
-        "Ask me where you are, nearby places, or details about a specific building.",
+        "Ask me where you are, nearby places, route help, or details about any mapped Parul University building.",
       nearby,
       nearest,
     };
@@ -50,7 +50,7 @@ function generateAssistantReply({ message, userPosition, locations }) {
     if (!nearest) {
       return {
         reply:
-          "I need GPS permission to detect your current area. Please allow location access in your browser.",
+          "I need a valid campus GPS fix to detect your current area. Please allow location access in your browser.",
         nearby,
         nearest,
       };
@@ -69,7 +69,7 @@ function generateAssistantReply({ message, userPosition, locations }) {
     if (!nearby.length) {
       return {
         reply:
-          "I cannot detect nearby places right now. Please enable GPS access and try again.",
+          "I cannot detect nearby campus places right now. Please enable GPS access and try again.",
         nearby,
         nearest,
       };
@@ -104,10 +104,54 @@ function generateAssistantReply({ message, userPosition, locations }) {
     };
   }
 
+  if (
+    lowerMessage.includes("food") ||
+    lowerMessage.includes("canteen") ||
+    lowerMessage.includes("coffee")
+  ) {
+    const foodOptions = nearby.filter((location) => location.type === "dining");
+    const bestFoodOption = foodOptions[0] || null;
+    return {
+      reply: bestFoodOption
+        ? `Nearest dining option is ${bestFoodOption.name} (${formatDistance(bestFoodOption.distanceMeters)} away).`
+        : "I could not find a nearby food destination right now.",
+      nearby,
+      nearest,
+    };
+  }
+
+  if (lowerMessage.includes("library")) {
+    const libraryOption =
+      locations.find((location) => location.name.toLowerCase().includes("library")) || null;
+    return {
+      reply: libraryOption
+        ? `${libraryOption.name} is available as a mapped campus library destination.`
+        : "I could not find a mapped campus library right now.",
+      nearby,
+      nearest,
+    };
+  }
+
+  if (lowerMessage.includes("hostel") || lowerMessage.includes("residence")) {
+    const residenceOption =
+      locations.find(
+        (location) =>
+          location.type === "residential" ||
+          location.name.toLowerCase().includes("residence"),
+      ) || null;
+    return {
+      reply: residenceOption
+        ? `A nearby residential option is ${residenceOption.name}.`
+        : "I could not find a mapped hostel or residence right now.",
+      nearby,
+      nearest,
+    };
+  }
+
   if (lowerMessage.includes("help") || lowerMessage.includes("what can you do")) {
     return {
       reply:
-        "I can help with nearby places, current location, and building information. Example: 'nearest food court' or 'tell me about A24'.",
+        "I can help with nearby places, your campus area, food courts, libraries, hostels, and building information. Example: 'nearest food court' or 'tell me about Administrative Block'.",
       nearby,
       nearest,
     };
@@ -115,7 +159,7 @@ function generateAssistantReply({ message, userPosition, locations }) {
 
   return {
     reply:
-      "Try asking for nearby places, your current location, or a building name such as Central Library, A24, or G7.",
+      "Try asking for nearby places, your current location, the nearest food court, or a building name such as Administrative Block, C. V. Raman Center, or Tagore Bhawan.",
     nearby,
     nearest,
   };

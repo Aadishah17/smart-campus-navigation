@@ -1,8 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 
 const links = [
-  { path: "/dashboard", label: "Dashboard" },
-  { path: "/about", label: "About" },
+  { path: "/dashboard", label: "Navigator" },
+  { path: "/about", label: "Project" },
   { path: "/settings", label: "Settings" },
 ];
 
@@ -12,7 +12,7 @@ function TopNav() {
   return (
     <header className="top-nav">
       <Link to="/dashboard" className="brand">
-        Campus Navigator
+        Parul University Navigator
       </Link>
       <nav>
         {links.map((link) => (
@@ -30,4 +30,3 @@ function TopNav() {
 }
 
 export default TopNav;
-

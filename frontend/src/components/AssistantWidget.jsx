@@ -1,23 +1,32 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { askAssistant } from "../api/campusApi";
+import { assistantReply } from "../services/campusEngine";
 
-const initialMessages = [
-  {
-    role: "assistant",
-    content:
-      "Ask about nearby places, your location, or any campus building details.",
-  },
+const quickPrompts = [
+  "Where am I on campus?",
+  "Nearest food court",
+  "Nearest library",
+  "Tell me about Administrative Block",
 ];
 
-function AssistantWidget({ userPosition }) {
+function AssistantWidget({ userPosition, locations, userOnCampus, fallbackMode = false }) {
+  const initialMessages = useMemo(
+    () => [
+      {
+        role: "assistant",
+        content:
+          "Ask about nearby places, your campus area, route ideas, or any mapped Parul University building.",
+      },
+    ],
+    [],
+  );
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState(initialMessages);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function sendMessage(event) {
-    event.preventDefault();
-    const trimmed = draft.trim();
+  async function sendPrompt(prompt) {
+    const trimmed = String(prompt || "").trim();
 
     if (!trimmed || loading) {
       return;
@@ -29,22 +38,37 @@ function AssistantWidget({ userPosition }) {
     setLoading(true);
 
     try {
-      const response = await askAssistant(trimmed, userPosition);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response.reply || "No response generated." },
-      ]);
+      const response = fallbackMode
+        ? assistantReply({
+            locations,
+            message: trimmed,
+            userPosition,
+            userOnCampus,
+          })
+        : await askAssistant(trimmed, userPosition);
+
+      if (!response?.reply) {
+        throw new Error("Missing assistant reply");
+      }
+
+      setMessages((prev) => [...prev, { role: "assistant", content: response.reply }]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Assistant is not available right now. Try again shortly.",
-        },
-      ]);
+      const fallback = assistantReply({
+        locations,
+        message: trimmed,
+        userPosition,
+        userOnCampus,
+      });
+
+      setMessages((prev) => [...prev, { role: "assistant", content: fallback.reply }]);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    await sendPrompt(draft);
   }
 
   return (
@@ -52,11 +76,22 @@ function AssistantWidget({ userPosition }) {
       {open ? (
         <section className="assistant-panel">
           <header className="assistant-header">
-            <h3>AI Assistant</h3>
+            <div>
+              <h3>Campus Assistant</h3>
+              <p>{fallbackMode ? "Using local Parul campus knowledge" : "Live assistant with local fallback"}</p>
+            </div>
             <button type="button" onClick={() => setOpen(false)}>
               Close
             </button>
           </header>
+
+          <div className="assistant-quick-prompts">
+            {quickPrompts.map((prompt) => (
+              <button key={prompt} type="button" onClick={() => sendPrompt(prompt)}>
+                {prompt}
+              </button>
+            ))}
+          </div>
 
           <div className="assistant-messages">
             {messages.map((message, index) => (
@@ -70,11 +105,11 @@ function AssistantWidget({ userPosition }) {
             {loading ? <div className="bubble assistant">Thinking...</div> : null}
           </div>
 
-          <form onSubmit={sendMessage} className="assistant-form">
+          <form onSubmit={handleSubmit} className="assistant-form">
             <input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Type your question..."
+              placeholder="Ask about a building, route, hostel, library, or food court"
             />
             <button type="submit" disabled={loading}>
               Send
@@ -83,8 +118,12 @@ function AssistantWidget({ userPosition }) {
         </section>
       ) : null}
 
-      <button type="button" className="assistant-fab" onClick={() => setOpen((value) => !value)}>
-        {open ? "Hide Assistant" : "Open Assistant"}
+      <button
+        type="button"
+        className="assistant-fab"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? "Hide Assistant" : "Ask Campus Assistant"}
       </button>
     </div>
   );

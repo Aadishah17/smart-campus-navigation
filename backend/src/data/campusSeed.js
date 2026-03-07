@@ -1,463 +1,279 @@
-const campusSeedLocations = [
-  {
-    id: "entry-gate",
-    name: "Entry Gate",
-    type: "entry",
-    description:
-      "Primary student entry gate with quick access to admissions, transport, and the main internal road.",
-    aliases: ["main gate", "entry", "you are here"],
-    lat: 23.03718,
-    lng: 72.55144,
-    guideX: 428,
-    guideY: 1237,
-    facilities: ["Security Desk", "Help Point", "Visitor Screening"],
-    connections: ["bank-b1", "c2-admission-cell", "transport-services"],
-  },
-  {
-    id: "exit-gate",
-    name: "Exit Gate",
-    type: "entry",
-    description:
-      "Northern exit gate linked to transport services, pharmacy block, and visitor parking.",
-    aliases: ["exit", "exit gate"],
-    lat: 23.03811,
-    lng: 72.55178,
-    guideX: 428,
-    guideY: 519,
-    facilities: ["Security Point", "Outbound Gate"],
-    connections: ["transport-services", "visitor-parking-p1", "a10-school-pharmacy"],
-  },
-  {
-    id: "transport-services",
-    name: "TS - Transport Services",
-    type: "transport",
-    description:
-      "Transport office for bus scheduling, vehicle queries, and campus transit coordination.",
-    aliases: ["ts", "transport office", "transport"],
-    lat: 23.03812,
-    lng: 72.55177,
-    guideX: 417,
-    guideY: 533,
-    facilities: ["Bus Enquiry", "Transport Desk"],
-    connections: ["entry-gate", "exit-gate", "visitor-parking-p1"],
-  },
-  {
-    id: "visitor-parking-p1",
-    name: "P1 - Visitor Parking",
-    type: "parking",
-    description:
-      "Visitor parking zone near the northern approach road and academic cluster.",
-    aliases: ["p1", "visitor parking", "parking"],
-    lat: 23.0381,
-    lng: 72.55185,
-    guideX: 598,
-    guideY: 724,
-    facilities: ["Visitor Parking", "Two-Wheeler Parking"],
-    connections: [
-      "transport-services",
-      "exit-gate",
-      "a10-school-pharmacy",
-      "c2-admission-cell",
-      "g3-football-ground",
-    ],
-  },
-  {
-    id: "a10-school-pharmacy",
-    name: "A10 - School of Pharmacy",
-    type: "academic",
-    description:
-      "Academic block for pharmacy teaching, department labs, and student classrooms.",
-    aliases: ["a10", "school of pharmacy", "pharmacy block"],
-    lat: 23.03812,
-    lng: 72.55189,
-    guideX: 439,
-    guideY: 926,
-    facilities: ["Classrooms", "Pharmacy Labs", "Faculty Offices"],
-    connections: [
-      "exit-gate",
-      "visitor-parking-p1",
-      "c2-admission-cell",
-      "e2-sevashram-hospital",
-    ],
-  },
-  {
-    id: "c2-admission-cell",
-    name: "C2 - Admission Cell",
-    type: "admin",
-    description:
-      "Central admission, placement, and student support offices near the main roundabout.",
-    aliases: ["c2", "admission cell", "admission", "placement cell"],
-    lat: 23.03788,
-    lng: 72.55218,
-    guideX: 609,
-    guideY: 971,
-    facilities: ["Admission Desk", "Placement Cell", "MIS Cell"],
-    connections: [
-      "entry-gate",
-      "visitor-parking-p1",
-      "a10-school-pharmacy",
-      "c1-central-library",
-      "a14-business-administration",
-      "bank-b1",
-    ],
-  },
-  {
-    id: "c1-central-library",
-    name: "C1 - Central Library & Student Section",
-    type: "academic",
-    description:
-      "Library and student services block with reading space, exam support, and document desks.",
-    aliases: ["c1", "central library", "library", "student section"],
-    lat: 23.0377,
-    lng: 72.55248,
-    guideX: 654,
-    guideY: 943,
-    facilities: ["Reading Hall", "Student Section", "Exam Section"],
-    connections: [
-      "c2-admission-cell",
-      "a14-business-administration",
-      "g3-football-ground",
-      "g1-watchers-park",
-    ],
-  },
-  {
-    id: "a14-business-administration",
-    name: "A14 - Business Administration",
-    type: "academic",
-    description:
-      "Business administration block close to the central offices and football ground approach.",
-    aliases: ["a14", "business administration", "management block"],
-    lat: 23.03802,
-    lng: 72.55203,
-    guideX: 607,
-    guideY: 742,
-    facilities: ["Lecture Rooms", "Faculty Offices"],
-    connections: [
-      "c2-admission-cell",
-      "c1-central-library",
-      "a16-physiotherapy-research",
-      "g3-football-ground",
-    ],
-  },
-  {
-    id: "a16-physiotherapy-research",
-    name: "A16 - Physiotherapy & Research",
-    type: "academic",
-    description:
-      "Northern academic block for physiotherapy and research programs.",
-    aliases: ["a16", "physiotherapy", "research block"],
-    lat: 23.03703,
-    lng: 72.55298,
-    guideX: 955,
-    guideY: 528,
-    facilities: ["Classrooms", "Research Labs", "Seminar Rooms"],
-    connections: [
-      "a14-business-administration",
-      "g3-football-ground",
-      "a23-subhash-chandra-bose-bhawan",
-    ],
-  },
-  {
-    id: "g3-football-ground",
-    name: "G3 - Football Ground",
-    type: "sports",
-    description:
-      "Large multi-purpose football ground that acts as a central orientation landmark.",
-    aliases: ["g3", "football ground", "ground"],
-    lat: 23.03716,
-    lng: 72.55261,
-    guideX: 808,
-    guideY: 712,
-    facilities: ["Open Ground", "Practice Area"],
-    connections: [
-      "visitor-parking-p1",
-      "c1-central-library",
-      "a14-business-administration",
-      "a16-physiotherapy-research",
-      "g1-watchers-park",
-    ],
-  },
-  {
-    id: "e2-sevashram-hospital",
-    name: "E2 - Parul Sevashram Hospital",
-    type: "hospital",
-    description:
-      "Main hospital complex for clinical services, emergency support, and healthcare access.",
-    aliases: ["e2", "sevashram hospital", "hospital"],
-    lat: 23.03682,
-    lng: 72.55161,
-    guideX: 760,
-    guideY: 1248,
-    facilities: ["Emergency Care", "Reception", "Clinical Services"],
-    connections: [
-      "a10-school-pharmacy",
-      "bank-b1",
-      "f1-main-food-court",
-      "a11-medical-library",
-    ],
-  },
-  {
-    id: "bank-b1",
-    name: "B1 - Central Bank of India",
-    type: "bank",
-    description:
-      "Campus banking point near the hospital and the entry-side road network.",
-    aliases: ["b1", "bank", "central bank"],
-    lat: 23.03727,
-    lng: 72.55147,
-    guideX: 356,
-    guideY: 1233,
-    facilities: ["ATM", "Branch Counter"],
-    connections: ["entry-gate", "c2-admission-cell", "e2-sevashram-hospital"],
-  },
-  {
-    id: "f1-main-food-court",
-    name: "F1 - Main Food Court",
-    type: "dining",
-    description:
-      "Main food court serving quick meals and drinks between the hospital and central campus spine.",
-    aliases: ["f1", "food court", "canteen"],
-    lat: 23.03684,
-    lng: 72.55163,
-    guideX: 724,
-    guideY: 1135,
-    facilities: ["Food Stalls", "Seating", "Water Point"],
-    connections: [
-      "e2-sevashram-hospital",
-      "g1-watchers-park",
-      "a11-medical-library",
-    ],
-  },
-  {
-    id: "g1-watchers-park",
-    name: "G1 - Watcher's Park",
-    type: "sports",
-    description:
-      "Central open park and activity zone connecting the academic core to the eastern blocks.",
-    aliases: ["g1", "watchers park", "watcher's park", "park"],
-    lat: 23.036,
-    lng: 72.55221,
-    guideX: 1039,
-    guideY: 880,
-    facilities: ["Open Park", "Walkway", "Rest Area"],
-    connections: [
-      "c1-central-library",
-      "g3-football-ground",
-      "f1-main-food-court",
-      "a24-bhagat-singh-bhawan",
-      "h17-dnyan-bhavan",
-    ],
-  },
-  {
-    id: "a24-bhagat-singh-bhawan",
-    name: "A24 - Bhagat Singh Bhawan",
-    type: "academic",
-    description:
-      "Eastern academic block on the main upper road corridor toward H33 and A25.",
-    aliases: ["a24", "bhagat singh bhawan"],
-    lat: 23.03754,
-    lng: 72.55368,
-    guideX: 1174,
-    guideY: 728,
-    facilities: ["Classrooms", "Department Rooms"],
-    connections: [
-      "g1-watchers-park",
-      "a25-cv-raman-centre",
-      "a23-subhash-chandra-bose-bhawan",
-      "h33-azad-bhawan",
-    ],
-  },
-  {
-    id: "a25-cv-raman-centre",
-    name: "A25 - C.V. Raman Centre",
-    type: "academic",
-    description:
-      "Academic centre beside A24, used as a major eastern teaching destination.",
-    aliases: ["a25", "cv raman", "c.v. raman centre"],
-    lat: 23.03777,
-    lng: 72.5539,
-    guideX: 1251,
-    guideY: 730,
-    facilities: ["Classrooms", "Seminar Space"],
-    connections: [
-      "a24-bhagat-singh-bhawan",
-      "a23-subhash-chandra-bose-bhawan",
-      "h33-azad-bhawan",
-    ],
-  },
-  {
-    id: "a23-subhash-chandra-bose-bhawan",
-    name: "A23 - Subhash Chandra Bose Bhawan",
-    type: "academic",
-    description:
-      "Upper-east academic block used for commerce, law, agriculture, and related programs.",
-    aliases: ["a23", "subhash chandra bose bhawan", "subhash bhawan"],
-    lat: 23.03708,
-    lng: 72.55372,
-    guideX: 1347,
-    guideY: 603,
-    facilities: ["Classrooms", "Department Offices"],
-    connections: [
-      "a16-physiotherapy-research",
-      "a24-bhagat-singh-bhawan",
-      "a25-cv-raman-centre",
-      "h33-azad-bhawan",
-      "f8-east-food-court",
-    ],
-  },
-  {
-    id: "h33-azad-bhawan",
-    name: "H33 - Azad Bhawan",
-    type: "residential",
-    description:
-      "Large hostel block anchoring the eastern residential edge of the campus.",
-    aliases: ["h33", "azad bhawan", "hostel"],
-    lat: 23.0368,
-    lng: 72.55375,
-    guideX: 1487,
-    guideY: 678,
-    facilities: ["Residence", "Common Area", "Laundry"],
-    connections: [
-      "a24-bhagat-singh-bhawan",
-      "a25-cv-raman-centre",
-      "a23-subhash-chandra-bose-bhawan",
-      "f8-east-food-court",
-      "g7-multipurpose-ground",
-      "h17-dnyan-bhavan",
-    ],
-  },
-  {
-    id: "f8-east-food-court",
-    name: "F8 - East Food Court",
-    type: "dining",
-    description:
-      "Food and refreshment point on the eastern campus corridor near hostels and sports grounds.",
-    aliases: ["f8", "east food court", "east canteen"],
-    lat: 23.03613,
-    lng: 72.5542,
-    guideX: 1355,
-    guideY: 1082,
-    facilities: ["Food Stalls", "Seating"],
-    connections: [
-      "a23-subhash-chandra-bose-bhawan",
-      "h33-azad-bhawan",
-      "g7-multipurpose-ground",
-      "g9-g10-courts",
-    ],
-  },
-  {
-    id: "g7-multipurpose-ground",
-    name: "G7 - Multipurpose Ground",
-    type: "sports",
-    description:
-      "Major eastern activity ground used for events, recreation, and outdoor movement.",
-    aliases: ["g7", "multipurpose ground", "ground"],
-    lat: 23.03625,
-    lng: 72.55414,
-    guideX: 1612,
-    guideY: 994,
-    facilities: ["Open Ground", "Event Space"],
-    connections: [
-      "h33-azad-bhawan",
-      "f8-east-food-court",
-      "g9-g10-courts",
-      "g5-ground",
-    ],
-  },
-  {
-    id: "a11-medical-library",
-    name: "A11 - Medical Library",
-    type: "academic",
-    description:
-      "Medical library and academic support block near the southern-east academic corridor.",
-    aliases: ["a11", "medical library", "library"],
-    lat: 23.03634,
-    lng: 72.55367,
-    guideX: 1215,
-    guideY: 1364,
-    facilities: ["Library", "Study Area", "Reference Desk"],
-    connections: [
-      "e2-sevashram-hospital",
-      "f1-main-food-court",
-      "g9-g10-courts",
-      "a12-medical-sciences-complex",
-    ],
-  },
-  {
-    id: "g9-g10-courts",
-    name: "G9/G10 - Sports Courts",
-    type: "sports",
-    description:
-      "Sports court cluster on the lower-eastern side of campus.",
-    aliases: ["g9", "g10", "sports courts", "courts"],
-    lat: 23.03619,
-    lng: 72.55383,
-    guideX: 1409,
-    guideY: 1416,
-    facilities: ["Practice Courts", "Open Space"],
-    connections: [
-      "f8-east-food-court",
-      "g7-multipurpose-ground",
-      "a11-medical-library",
-      "a12-medical-sciences-complex",
-      "g5-ground",
-      "h17-dnyan-bhavan",
-    ],
-  },
-  {
-    id: "a12-medical-sciences-complex",
-    name: "A12 - Medical Sciences Complex",
-    type: "academic",
-    description:
-      "Southern academic complex for medical sciences, public health, and paramedical programs.",
-    aliases: ["a12", "medical sciences", "public health", "paramedical"],
-    lat: 23.03633,
-    lng: 72.55367,
-    guideX: 1228,
-    guideY: 1578,
-    facilities: ["Classrooms", "Labs", "Academic Offices"],
-    connections: [
-      "a11-medical-library",
-      "g9-g10-courts",
-      "g5-ground",
-    ],
-  },
-  {
-    id: "g5-ground",
-    name: "G5 - Sports Ground",
-    type: "sports",
-    description:
-      "Southern sports ground near the lower-eastern campus edge.",
-    aliases: ["g5", "sports ground", "ground"],
-    lat: 23.03631,
-    lng: 72.55366,
-    guideX: 1366,
-    guideY: 1795,
-    facilities: ["Open Ground", "Practice Area"],
-    connections: [
-      "g7-multipurpose-ground",
-      "g9-g10-courts",
-      "a12-medical-sciences-complex",
-    ],
-  },
-  {
-    id: "h17-dnyan-bhavan",
-    name: "H17 - Dnyan Bhavan",
-    type: "residential",
-    description:
-      "Residential hostel block linking the central park edge to the eastern residential cluster.",
-    aliases: ["h17", "dnyan bhavan", "hostel"],
-    lat: 23.03634,
-    lng: 72.55399,
-    guideX: 1287,
-    guideY: 1050,
-    facilities: ["Residence", "Study Space"],
-    connections: [
-      "g1-watchers-park",
-      "h33-azad-bhawan",
-      "g9-g10-courts",
-    ],
-  },
+const rawCampusLocations = [
+  ["parul-ayurved-hospital", "Parul Ayurved Hospital", 22.288583, 73.364833],
+  ["main-food-court", "Main Food Court", 22.288788, 73.364878],
+  ["pu-circle", "PU Circle", 22.2886, 73.364554],
+  [
+    "faculty-of-engineering-and-technology",
+    "Faculty of Engineering and Technology",
+    22.288629,
+    73.364104,
+  ],
+  ["administrative-block", "Administrative Block", 22.288727, 73.36395],
+  ["fet-diploma-studies", "FET Diploma Studies", 22.288866, 73.364084],
+  ["super-market", "Super Market", 22.289858, 73.36457],
+  ["mr-puff", "Mr. Puff", 22.289858, 73.36457],
+  ["tea-post", "Tea Post", 22.289858, 73.36457],
+  ["pu-fitness-gym", "PU Fitness Gym", 22.289858, 73.36457],
+  ["campus-stationery", "Campus Stationery", 22.289953, 73.364734],
+  ["pu-temple", "PU Temple", 22.290561, 73.36499],
+  ["shastri-bhawan-a", "Shastri Bhawan A", 22.290561, 73.36499],
+  ["shastri-bhawan-b-c", "Shastri Bhawan B/C", 22.290872, 73.365156],
+  ["faculty-of-homoeopathy", "Faculty of Homoeopathy", 22.290654, 73.365498],
+  ["faculty-of-pharmacy", "Faculty of Pharmacy", 22.290667, 73.366187],
+  [
+    "parul-polytechnic-institute",
+    "Parul Polytechnic Institute",
+    22.290667,
+    73.366187,
+  ],
+  ["sarojini-bhawan-a", "Sarojini Bhawan A", 22.291016, 73.366619],
+  ["sarojini-bhawan-b", "Sarojini Bhawan B", 22.291394, 73.36662],
+  ["u-k-laundry", "U.K. Laundry", 22.291121, 73.366487],
+  ["school-of-pharmacy", "School of Pharmacy", 22.291218, 73.366317],
+  ["marie-curie-residence", "Marie Curie Residence", 22.291127, 73.365871],
+  ["mess-4", "Mess 4", 22.29185, 73.367308],
+  ["indira-bhawan-b", "Indira Bhawan B", 22.29199, 73.366879],
+  ["indira-bhawan-a", "Indira Bhawan A", 22.29201, 73.366354],
+  ["indira-bhawan-c", "Indira Bhawan C", 22.291819, 73.366309],
+  [
+    "dr-r-c-shah-medical-library",
+    "Dr. R. C. Shah Medical Library",
+    22.292118,
+    73.366348,
+  ],
+  [
+    "albert-einstein-residence",
+    "Albert Einstein Residence",
+    22.291786,
+    73.365924,
+  ],
+  ["kalam-bhawan-a", "Kalam Bhawan A", 22.291679, 73.365262],
+  ["kalam-bhawan-b", "Kalam Bhawan B", 22.291634, 73.365453],
+  ["kalam-bhawan-c", "Kalam Bhawan C", 22.291632, 73.365595],
+  ["tagore-bhawan-a", "Tagore Bhawan A", 22.291887, 73.364802],
+  ["kathi-junction", "Kathi Junction", 22.292006, 73.364786],
+  ["tilak-bhawan-b", "Tilak Bhawan B", 22.29238, 73.36504],
+  ["tilak-bhawan-a", "Tilak Bhawan A", 22.291857, 73.365086],
+  ["mess-3", "Mess 3", 22.292419, 73.36533],
+  ["janki-bhawan", "Janki Bhawan", 22.292419, 73.36533],
+  ["domino-s", "Domino's", 22.291174, 73.364777],
+  ["mess-1", "Mess 1", 22.291146, 73.365158],
+  ["faculty-of-pharmacy-pip", "Faculty of Pharmacy PIP", 22.288047, 73.364829],
+  ["security-office", "Security Office", 22.287767, 73.364261],
+  ["car-parking-west", "Car Parking West", 22.288163, 73.363286],
+  ["bike-parking", "Bike Parking", 22.288028, 73.362745],
+  [
+    "faculty-of-management-studies",
+    "Faculty of Management Studies",
+    22.288409,
+    73.362913,
+  ],
+  ["football-ground", "Football Ground", 22.289063, 73.362821],
+  [
+    "parul-institute-of-ayurved",
+    "Parul Institute of Ayurved",
+    22.289108,
+    73.363366,
+  ],
+  [
+    "university-exam-section",
+    "University Exam Section",
+    22.289235,
+    73.363545,
+  ],
+  ["management-studies-annex", "Management Studies Annex", 22.288924, 73.362367],
+  ["kalpana-bhawan-a", "Kalpana Bhawan A", 22.289387, 73.362063],
+  ["kalpana-bhawan-b", "Kalpana Bhawan B", 22.289528, 73.361812],
+  ["krishna-food-canteen", "Krishna Food Canteen", 22.289862, 73.361261],
+  ["milkha-bhawan-a", "Milkha Bhawan A", 22.289149, 73.361017],
+  [
+    "parul-institute-of-architecture-and-planning",
+    "Parul Institute of Architecture and Planning",
+    22.289926,
+    73.36197,
+  ],
+  ["car-parking-east", "Car Parking East", 22.290286, 73.361881],
+  ["annapurna-bhavan", "Annapurna Bhavan", 22.290442, 73.362692],
+  ["bhagat-singh-bhawan", "Bhagat Singh Bhawan", 22.291574, 73.363222],
+  ["champion-s-cove", "Champion's Cove", 22.291858, 73.36232],
+  ["c-v-raman-center", "C. V. Raman Center", 22.292229, 73.363089],
+  [
+    "subhash-chandra-bose-bhawan",
+    "Subhash Chandra Bose Bhawan",
+    22.292926,
+    73.362244,
+  ],
+  [
+    "green-house-and-crop-cafeteria",
+    "Green House and Crop Cafeteria",
+    22.293258,
+    73.362101,
+  ],
+  ["bus-stop", "Bus Stop", 22.293709, 73.362178],
+  ["tagore-bhawan-b", "Tagore Bhawan B", 22.292492, 73.363636],
 ];
 
-module.exports = { campusSeedLocations };
+function inferType(name) {
+  const lowerName = name.toLowerCase();
+
+  if (lowerName.includes("hospital")) {
+    return "hospital";
+  }
+  if (lowerName.includes("parking")) {
+    return "parking";
+  }
+  if (lowerName.includes("library")) {
+    return "library";
+  }
+  if (
+    lowerName.includes("mess") ||
+    lowerName.includes("canteen") ||
+    lowerName.includes("food") ||
+    lowerName.includes("domino") ||
+    lowerName.includes("tea") ||
+    lowerName.includes("junction") ||
+    lowerName.includes("market") ||
+    lowerName.includes("puff") ||
+    lowerName.includes("cafeteria")
+  ) {
+    return "dining";
+  }
+  if (lowerName.includes("temple")) {
+    return "landmark";
+  }
+  if (lowerName.includes("gym") || lowerName.includes("ground")) {
+    return "sports";
+  }
+  if (lowerName.includes("security") || lowerName.includes("administrative")) {
+    return "admin";
+  }
+  if (lowerName.includes("circle") || lowerName.includes("bus stop")) {
+    return "transport";
+  }
+  if (
+    lowerName.includes("bhawan") ||
+    lowerName.includes("residence") ||
+    lowerName.includes("hostel") ||
+    lowerName.includes("laundry")
+  ) {
+    return "residential";
+  }
+  if (
+    lowerName.includes("faculty") ||
+    lowerName.includes("institute") ||
+    lowerName.includes("school") ||
+    lowerName.includes("section")
+  ) {
+    return "academic";
+  }
+  if (lowerName.includes("stationery")) {
+    return "retail";
+  }
+
+  return "facility";
+}
+
+function buildDescription(name, type) {
+  switch (type) {
+    case "hospital":
+      return `${name} is a mapped healthcare destination on the Parul University campus.`;
+    case "parking":
+      return `${name} helps visitors and students park close to the surrounding campus zone.`;
+    case "library":
+      return `${name} provides study and reference support within the campus academic district.`;
+    case "dining":
+      return `${name} is a campus food and refreshment point for students, staff, and visitors.`;
+    case "sports":
+      return `${name} is part of the Parul University activity and recreation area.`;
+    case "admin":
+      return `${name} supports administration, security, or student service access inside the campus.`;
+    case "transport":
+      return `${name} is a useful orientation and movement landmark for navigating the Parul University campus.`;
+    case "residential":
+      return `${name} is part of the residential and student living zone on campus.`;
+    case "academic":
+      return `${name} is a mapped academic destination used for teaching, learning, or examinations.`;
+    case "retail":
+      return `${name} supports day-to-day student convenience inside the campus.`;
+    default:
+      return `${name} is a mapped point of interest on the Parul University campus.`;
+  }
+}
+
+function buildFacilities(type) {
+  switch (type) {
+    case "hospital":
+      return ["Reception", "Clinical Services", "Emergency Support"];
+    case "parking":
+      return ["Vehicle Access", "Parking Bays", "Drop-off Point"];
+    case "library":
+      return ["Reading Space", "Reference Desk", "Study Support"];
+    case "dining":
+      return ["Food Counter", "Seating", "Refreshments"];
+    case "sports":
+      return ["Open Space", "Activity Zone", "Campus Recreation"];
+    case "admin":
+      return ["Help Desk", "Administrative Support", "Information Point"];
+    case "transport":
+      return ["Wayfinding Landmark", "Pickup Point", "Campus Access"];
+    case "residential":
+      return ["Student Housing", "Residential Access", "Daily Living Support"];
+    case "academic":
+      return ["Classrooms", "Department Access", "Student Services"];
+    case "retail":
+      return ["Supplies", "Quick Purchase", "Student Convenience"];
+    default:
+      return ["Campus Landmark"];
+  }
+}
+
+function buildAliases(id, name) {
+  const lowerName = name.toLowerCase();
+  const normalizedName = lowerName.replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const aliases = new Set([id, lowerName, normalizedName]);
+
+  if (lowerName.includes("pu")) {
+    aliases.add(lowerName.replace(/\bpu\b/g, "parul university").replace(/\s+/g, " ").trim());
+  }
+  if (lowerName.includes("bhawan")) {
+    aliases.add(lowerName.replace("bhawan", "hostel"));
+  }
+  if (lowerName.includes("canteen") || lowerName.includes("mess")) {
+    aliases.add("food");
+  }
+  if (lowerName.includes("pharmacy")) {
+    aliases.add("pharmacy");
+  }
+  if (lowerName.includes("library")) {
+    aliases.add("library");
+  }
+  if (lowerName.includes("parking")) {
+    aliases.add("parking");
+  }
+  if (lowerName.includes("circle")) {
+    aliases.add("center");
+    aliases.add("main circle");
+  }
+
+  return Array.from(aliases).filter(Boolean);
+}
+
+const campusSeedLocations = rawCampusLocations.map(([id, name, lat, lng]) => {
+  const type = inferType(name);
+
+  return {
+    id,
+    name,
+    type,
+    description: buildDescription(name, type),
+    aliases: buildAliases(id, name),
+    lat,
+    lng,
+    guideX: null,
+    guideY: null,
+    facilities: buildFacilities(type),
+    connections: [],
+  };
+});
+
+module.exports = campusSeedLocations;

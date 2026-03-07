@@ -18,42 +18,149 @@ function haversineDistanceMeters(lat1, lng1, lat2, lng2) {
   return earthRadius * c;
 }
 
-function buildGraph(locations) {
-  const locationMap = new Map();
-  const graph = new Map();
+function buildLocationMap(locations) {
+  return new Map(locations.map((location) => [location.id, location]));
+}
+
+function addGraphEdge(graph, locationMap, fromId, toId) {
+  const fromNode = locationMap.get(fromId);
+  const toNode = locationMap.get(toId);
+
+  if (!fromNode || !toNode || fromId === toId) {
+    return null;
+  }
+
+  const distanceMeters = haversineDistanceMeters(
+    fromNode.lat,
+    fromNode.lng,
+    toNode.lat,
+    toNode.lng,
+  );
+
+  const fromNeighbors = graph.get(fromId);
+  if (!fromNeighbors.some((item) => item.targetId === toId)) {
+    fromNeighbors.push({ targetId: toId, distanceMeters });
+  }
+
+  return distanceMeters;
+}
+
+function connectNearestNeighbors(graph, locationMap, locations) {
+  const nearestNeighborCount = locations.length >= 40 ? 4 : 3;
 
   locations.forEach((location) => {
-    locationMap.set(location.id, location);
-    graph.set(location.id, []);
+    const candidates = locations
+      .filter((candidate) => candidate.id !== location.id)
+      .map((candidate) => ({
+        candidate,
+        distanceMeters: haversineDistanceMeters(
+          location.lat,
+          location.lng,
+          candidate.lat,
+          candidate.lng,
+        ),
+      }))
+      .sort((left, right) => left.distanceMeters - right.distanceMeters)
+      .slice(0, nearestNeighborCount);
+
+    candidates.forEach(({ candidate }) => {
+      addGraphEdge(graph, locationMap, location.id, candidate.id);
+      addGraphEdge(graph, locationMap, candidate.id, location.id);
+    });
   });
+}
 
-  function addEdge(fromId, toId) {
-    const fromNode = locationMap.get(fromId);
-    const toNode = locationMap.get(toId);
+function getConnectedComponents(graph) {
+  const visited = new Set();
+  const components = [];
 
-    if (!fromNode || !toNode) {
+  graph.forEach((_, nodeId) => {
+    if (visited.has(nodeId)) {
       return;
     }
 
-    const distanceMeters = haversineDistanceMeters(
-      fromNode.lat,
-      fromNode.lng,
-      toNode.lat,
-      toNode.lng,
-    );
+    const stack = [nodeId];
+    const component = [];
+    visited.add(nodeId);
 
-    const fromNeighbors = graph.get(fromId);
-    if (!fromNeighbors.some((item) => item.targetId === toId)) {
-      fromNeighbors.push({ targetId: toId, distanceMeters });
+    while (stack.length > 0) {
+      const currentId = stack.pop();
+      component.push(currentId);
+
+      (graph.get(currentId) || []).forEach((neighbor) => {
+        if (visited.has(neighbor.targetId)) {
+          return;
+        }
+
+        visited.add(neighbor.targetId);
+        stack.push(neighbor.targetId);
+      });
     }
+
+    components.push(component);
+  });
+
+  return components;
+}
+
+function bridgeComponents(graph, locationMap) {
+  let components = getConnectedComponents(graph);
+
+  while (components.length > 1) {
+    let bestBridge = null;
+
+    for (let sourceIndex = 0; sourceIndex < components.length; sourceIndex += 1) {
+      for (
+        let targetIndex = sourceIndex + 1;
+        targetIndex < components.length;
+        targetIndex += 1
+      ) {
+        components[sourceIndex].forEach((fromId) => {
+          components[targetIndex].forEach((toId) => {
+            const fromNode = locationMap.get(fromId);
+            const toNode = locationMap.get(toId);
+            const distanceMeters = haversineDistanceMeters(
+              fromNode.lat,
+              fromNode.lng,
+              toNode.lat,
+              toNode.lng,
+            );
+
+            if (!bestBridge || distanceMeters < bestBridge.distanceMeters) {
+              bestBridge = { fromId, toId, distanceMeters };
+            }
+          });
+        });
+      }
+    }
+
+    if (!bestBridge) {
+      break;
+    }
+
+    addGraphEdge(graph, locationMap, bestBridge.fromId, bestBridge.toId);
+    addGraphEdge(graph, locationMap, bestBridge.toId, bestBridge.fromId);
+    components = getConnectedComponents(graph);
   }
+}
+
+function buildGraph(locations) {
+  const locationMap = buildLocationMap(locations);
+  const graph = new Map();
+
+  locations.forEach((location) => {
+    graph.set(location.id, []);
+  });
 
   locations.forEach((location) => {
     (location.connections || []).forEach((targetId) => {
-      addEdge(location.id, targetId);
-      addEdge(targetId, location.id);
+      addGraphEdge(graph, locationMap, location.id, targetId);
+      addGraphEdge(graph, locationMap, targetId, location.id);
     });
   });
+
+  connectNearestNeighbors(graph, locationMap, locations);
+  bridgeComponents(graph, locationMap);
 
   return graph;
 }

@@ -19,29 +19,33 @@ const MAP_BOUNDS = [
   [0, 0],
   [MAP_IMAGE_HEIGHT, MAP_IMAGE_WIDTH],
 ];
-const LIVE_CENTER_FALLBACK = [23.0375, 72.5525];
 const LIVE_INITIAL_ZOOM = 17;
 const LIVE_MIN_ZOOM = 15;
 const LIVE_MAX_ZOOM = 20;
-const LIVE_SELECTION_RADIUS_METERS = 120;
-const TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+const LIVE_SELECTION_RADIUS_METERS = 100;
+const TILE_URL = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 const TILE_SUBDOMAINS = ["a", "b", "c", "d"];
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CARTO';
-
-const CAMPUS_RECT = {
-  top: 210,
-  bottom: 1530,
-  left: 70,
-  right: 1695,
+const GUIDE_VIEWPORT = {
+  top: 190,
+  bottom: 1730,
+  left: 160,
+  right: 1605,
 };
 
-function projectToImagePoint(
-  lat,
-  lng,
-  extents,
-  { clamp = true } = {},
-) {
+function projectToImagePoint(locationOrPosition, extents, options = {}) {
+  const { clamp = true } = options;
+  const lat = locationOrPosition.lat;
+  const lng = locationOrPosition.lng;
+
+  if (
+    Number.isFinite(locationOrPosition.guideX) &&
+    Number.isFinite(locationOrPosition.guideY)
+  ) {
+    return [locationOrPosition.guideY, locationOrPosition.guideX];
+  }
+
   const { minLat, maxLat, minLng, maxLng } = extents;
   const latRange = maxLat - minLat || 1;
   const lngRange = maxLng - minLng || 1;
@@ -56,48 +60,50 @@ function projectToImagePoint(
   xRatio = Math.max(0, Math.min(1, xRatio));
   yRatio = Math.max(0, Math.min(1, yRatio));
 
-  const x = CAMPUS_RECT.left + xRatio * (CAMPUS_RECT.right - CAMPUS_RECT.left);
-  const y =
-    CAMPUS_RECT.bottom - yRatio * (CAMPUS_RECT.bottom - CAMPUS_RECT.top);
-
-  return [y, x];
+  return [
+    GUIDE_VIEWPORT.bottom - yRatio * (GUIDE_VIEWPORT.bottom - GUIDE_VIEWPORT.top),
+    GUIDE_VIEWPORT.left + xRatio * (GUIDE_VIEWPORT.right - GUIDE_VIEWPORT.left),
+  ];
 }
 
-function buildNetworkSegments(locations, toPoint) {
-  const locationById = new Map(locations.map((location) => [location.id, location]));
-  const segments = [];
+function markerStyle(type, selected) {
+  if (selected) {
+    return {
+      radius: 10,
+      color: "#ffffff",
+      fillColor: "#ffffff",
+      fillOpacity: 1,
+      weight: 3,
+    };
+  }
 
-  locations.forEach((location) => {
-    const fromPoint = toPoint(location);
-    if (!fromPoint) {
-      return;
-    }
-
-    (location.connections || []).forEach((targetId) => {
-      if (String(location.id).localeCompare(String(targetId)) >= 0) {
-        return;
-      }
-
-      const target = locationById.get(targetId);
-      if (!target) {
-        return;
-      }
-
-      const toTargetPoint = toPoint(target);
-      if (!toTargetPoint) {
-        return;
-      }
-
-      segments.push([fromPoint, toTargetPoint]);
-    });
-  });
-
-  return segments;
+  switch (type) {
+    case "hospital":
+      return { radius: 7, color: "#fff5f0", fillColor: "#e76f51", fillOpacity: 0.95, weight: 2 };
+    case "academic":
+      return { radius: 7, color: "#edf7f1", fillColor: "#2d6a4f", fillOpacity: 0.95, weight: 2 };
+    case "residential":
+      return { radius: 7, color: "#fff9ec", fillColor: "#d97706", fillOpacity: 0.95, weight: 2 };
+    case "library":
+      return { radius: 7, color: "#eff6ff", fillColor: "#2563eb", fillOpacity: 0.95, weight: 2 };
+    case "dining":
+      return { radius: 7, color: "#fff8e6", fillColor: "#ea580c", fillOpacity: 0.95, weight: 2 };
+    case "sports":
+      return { radius: 7, color: "#ecfccb", fillColor: "#65a30d", fillOpacity: 0.95, weight: 2 };
+    case "parking":
+      return { radius: 7, color: "#f8fafc", fillColor: "#475569", fillOpacity: 0.95, weight: 2 };
+    case "admin":
+      return { radius: 7, color: "#fff7ed", fillColor: "#9a3412", fillOpacity: 0.95, weight: 2 };
+    case "transport":
+      return { radius: 7, color: "#f5f3ff", fillColor: "#7c3aed", fillOpacity: 0.95, weight: 2 };
+    default:
+      return { radius: 7, color: "#f7fee7", fillColor: "#4d7c0f", fillOpacity: 0.95, weight: 2 };
+  }
 }
 
 function computeCampusCenter(locations) {
   if (!locations.length) {
-    return LIVE_CENTER_FALLBACK;
+    return [22.2904, 73.3639];
   }
 
   const aggregate = locations.reduce(
@@ -111,57 +117,7 @@ function computeCampusCenter(locations) {
   return [aggregate.lat / locations.length, aggregate.lng / locations.length];
 }
 
-function getMarkerStyle(type, selected) {
-  if (selected) {
-    return {
-      radius: 9,
-      color: "#ffffff",
-      fillColor: "#ffffff",
-      fillOpacity: 1,
-      weight: 3,
-    };
-  }
-
-  if (type === "academic") {
-    return {
-      radius: 7,
-      color: "#d9d9d9",
-      fillColor: "#b8b8b8",
-      fillOpacity: 0.95,
-      weight: 2,
-    };
-  }
-
-  if (type === "residential") {
-    return {
-      radius: 7,
-      color: "#bfbfbf",
-      fillColor: "#8a8a8a",
-      fillOpacity: 0.95,
-      weight: 2,
-    };
-  }
-
-  if (type === "facility") {
-    return {
-      radius: 7,
-      color: "#ececec",
-      fillColor: "#9e9e9e",
-      fillOpacity: 0.95,
-      weight: 2,
-    };
-  }
-
-  return {
-    radius: 7,
-    color: "#c6c6c6",
-    fillColor: "#7a7a7a",
-    fillOpacity: 0.95,
-    weight: 2,
-  };
-}
-
-function GuideMapController({ followUser, userPoint, onReady }) {
+function GuideMapController({ followUser, focusPoint, onReady }) {
   const map = useMap();
 
   useEffect(() => {
@@ -170,15 +126,15 @@ function GuideMapController({ followUser, userPoint, onReady }) {
   }, [map, onReady]);
 
   useEffect(() => {
-    if (followUser && userPoint) {
-      map.flyTo(userPoint, map.getZoom(), { duration: 0.75 });
+    if (followUser && focusPoint) {
+      map.flyTo(focusPoint, Math.max(map.getZoom(), 0), { duration: 0.8 });
     }
-  }, [followUser, map, userPoint]);
+  }, [focusPoint, followUser, map]);
 
   return null;
 }
 
-function LiveMapController({ followUser, userPosition, onReady }) {
+function LiveMapController({ followUser, focusPosition, onReady }) {
   const map = useMap();
 
   useEffect(() => {
@@ -186,12 +142,12 @@ function LiveMapController({ followUser, userPosition, onReady }) {
   }, [map, onReady]);
 
   useEffect(() => {
-    if (followUser && userPosition) {
-      map.flyTo(userPosition, Math.max(map.getZoom(), LIVE_INITIAL_ZOOM), {
-        duration: 0.75,
+    if (followUser && focusPosition) {
+      map.flyTo(focusPosition, Math.max(map.getZoom(), LIVE_INITIAL_ZOOM), {
+        duration: 0.8,
       });
     }
-  }, [followUser, map, userPosition]);
+  }, [focusPosition, followUser, map]);
 
   return null;
 }
@@ -221,11 +177,16 @@ function LiveMapTapSelector({ locations, onSelectLocation }) {
 
 function CampusMap({
   locations,
-  userPosition,
+  campusPosition,
   routePath,
+  networkEdges = [],
   selectedLocationId,
   onSelectLocation,
   followUser = false,
+  focusLabel = "",
+  highlightLabel = "",
+  statusMessage = "",
+  userOnCampus = true,
 }) {
   const [mapMode, setMapMode] = useState("guide");
   const [showNetwork, setShowNetwork] = useState(true);
@@ -235,10 +196,10 @@ function CampusMap({
   const extents = useMemo(() => {
     if (!locations.length) {
       return {
-        minLat: 23.035,
-        maxLat: 23.039,
-        minLng: 72.55,
-        maxLng: 72.555,
+        minLat: 22.2877,
+        maxLat: 22.2938,
+        minLng: 73.361,
+        maxLng: 73.3675,
       };
     }
 
@@ -250,62 +211,76 @@ function CampusMap({
     };
   }, [locations]);
 
-  const projectedLocations = useMemo(() => {
-    return locations
-      .map((location) => {
-        const projectedPoint = projectToImagePoint(
-          location.lat,
-          location.lng,
-          extents,
-        );
-        return { ...location, projectedPoint };
-      })
-      .filter((location) => Boolean(location.projectedPoint));
-  }, [extents, locations]);
+  const locationById = useMemo(
+    () => new Map(locations.map((location) => [location.id, location])),
+    [locations],
+  );
 
-  const projectedLocationById = useMemo(() => {
-    return new Map(
-      projectedLocations.map((location) => [location.id, location.projectedPoint]),
-    );
-  }, [projectedLocations]);
+  const projectedLocations = useMemo(
+    () =>
+      locations
+        .map((location) => ({
+          ...location,
+          projectedPoint: projectToImagePoint(location, extents),
+        }))
+        .filter((location) => Boolean(location.projectedPoint)),
+    [extents, locations],
+  );
 
-  const projectedUserPoint = useMemo(() => {
-    if (!userPosition) {
+  const projectedPointById = useMemo(
+    () => new Map(projectedLocations.map((location) => [location.id, location.projectedPoint])),
+    [projectedLocations],
+  );
+
+  const guideNetworkSegments = useMemo(
+    () =>
+      networkEdges
+        .map(([fromId, toId]) => {
+          const fromPoint = projectedPointById.get(fromId);
+          const toPoint = projectedPointById.get(toId);
+          return fromPoint && toPoint ? [fromPoint, toPoint] : null;
+        })
+        .filter(Boolean),
+    [networkEdges, projectedPointById],
+  );
+
+  const liveNetworkSegments = useMemo(
+    () =>
+      networkEdges
+        .map(([fromId, toId]) => {
+          const from = locationById.get(fromId);
+          const to = locationById.get(toId);
+          return from && to ? [[from.lat, from.lng], [to.lat, to.lng]] : null;
+        })
+        .filter(Boolean),
+    [locationById, networkEdges],
+  );
+
+  const guideRouteCoordinates = useMemo(
+    () =>
+      routePath
+        .map((point) => projectToImagePoint(point, extents))
+        .filter(Boolean),
+    [extents, routePath],
+  );
+
+  const liveRouteCoordinates = useMemo(
+    () => routePath.map((point) => [point.lat, point.lng]),
+    [routePath],
+  );
+
+  const projectedFocusPoint = useMemo(() => {
+    if (!campusPosition) {
       return null;
     }
 
-    return projectToImagePoint(userPosition.lat, userPosition.lng, extents, {
-      clamp: false,
-    });
-  }, [extents, userPosition]);
+    return projectToImagePoint(campusPosition, extents, { clamp: false });
+  }, [campusPosition, extents]);
 
-  const liveUserPosition = useMemo(() => {
-    if (!userPosition) {
-      return null;
-    }
-
-    return [userPosition.lat, userPosition.lng];
-  }, [userPosition]);
-
-  const guideRouteCoordinates = useMemo(() => {
-    return routePath
-      .map((point) => projectToImagePoint(point.lat, point.lng, extents))
-      .filter(Boolean);
-  }, [extents, routePath]);
-
-  const liveRouteCoordinates = useMemo(() => {
-    return routePath.map((point) => [point.lat, point.lng]);
-  }, [routePath]);
-
-  const guideNetworkSegments = useMemo(() => {
-    return buildNetworkSegments(locations, (location) =>
-      projectedLocationById.get(location.id),
-    );
-  }, [locations, projectedLocationById]);
-
-  const liveNetworkSegments = useMemo(() => {
-    return buildNetworkSegments(locations, (location) => [location.lat, location.lng]);
-  }, [locations]);
+  const liveFocusPosition = useMemo(
+    () => (campusPosition ? [campusPosition.lat, campusPosition.lng] : null),
+    [campusPosition],
+  );
 
   const campusCenter = useMemo(() => computeCampusCenter(locations), [locations]);
 
@@ -329,22 +304,27 @@ function CampusMap({
 
   function handleCenter() {
     if (mapMode === "guide") {
+      if (projectedFocusPoint) {
+        guideMapRef.current?.flyTo(projectedFocusPoint, Math.max(guideMapRef.current.getZoom(), 0), {
+          duration: 0.7,
+        });
+        return;
+      }
+
       guideMapRef.current?.fitBounds(MAP_BOUNDS, { padding: [18, 18] });
       return;
     }
 
-    if (userPosition) {
+    if (liveFocusPosition) {
       liveMapRef.current?.flyTo(
-        [userPosition.lat, userPosition.lng],
+        liveFocusPosition,
         Math.max(liveMapRef.current.getZoom(), LIVE_INITIAL_ZOOM),
-        { duration: 0.75 },
+        { duration: 0.8 },
       );
       return;
     }
 
-    liveMapRef.current?.flyTo(campusCenter, liveMapRef.current.getZoom(), {
-      duration: 0.6,
-    });
+    liveMapRef.current?.flyTo(campusCenter, LIVE_INITIAL_ZOOM, { duration: 0.8 });
   }
 
   function handleReset() {
@@ -356,10 +336,10 @@ function CampusMap({
     liveMapRef.current?.setView(campusCenter, LIVE_INITIAL_ZOOM);
   }
 
-  const mapOverlayMessage =
+  const mapModeMessage =
     mapMode === "guide"
-      ? "Guide mode: projected markers aligned to official campus guide map."
-      : "Live mode: real GPS map with interactive campus graph and route overlays.";
+      ? "Guide mode overlays Parul University locations on the campus image."
+      : "Live mode uses the validated Parul campus coordinates on an interactive street map.";
 
   return (
     <div className="map-card">
@@ -380,13 +360,18 @@ function CampusMap({
             Live Map
           </button>
         </div>
+
         <button
           type="button"
           className={showNetwork ? "map-chip map-chip-wide active" : "map-chip map-chip-wide"}
           onClick={() => setShowNetwork((value) => !value)}
         >
-          {showNetwork ? "Campus Graph: On" : "Campus Graph: Off"}
+          {showNetwork ? "Path Network On" : "Path Network Off"}
         </button>
+
+        <div className={userOnCampus ? "map-state-pill" : "map-state-pill caution"}>
+          {userOnCampus ? "On-campus focus" : "Pinned to campus"}
+        </div>
       </div>
 
       {mapMode === "guide" ? (
@@ -404,19 +389,19 @@ function CampusMap({
           <ImageOverlay url={MAP_IMAGE_URL} bounds={MAP_BOUNDS} />
           <GuideMapController
             followUser={followUser}
-            userPoint={projectedUserPoint}
+            focusPoint={projectedFocusPoint}
             onReady={handleGuideReady}
           />
 
           {showNetwork
             ? guideNetworkSegments.map((segment, index) => (
                 <Polyline
-                  key={`guide-segment-${index}`}
+                  key={`guide-network-${index}`}
                   positions={segment}
                   pathOptions={{
-                    color: "#ffffff",
-                    weight: 2,
-                    opacity: 0.35,
+                    color: "#2d6a4f",
+                    weight: 2.5,
+                    opacity: 0.28,
                     lineCap: "round",
                   }}
                 />
@@ -428,9 +413,9 @@ function CampusMap({
               <Polyline
                 positions={guideRouteCoordinates}
                 pathOptions={{
-                  color: "#000000",
-                  weight: 8,
-                  opacity: 0.78,
+                  color: "#fff5e4",
+                  weight: 10,
+                  opacity: 0.92,
                   lineCap: "round",
                   lineJoin: "round",
                 }}
@@ -438,9 +423,9 @@ function CampusMap({
               <Polyline
                 positions={guideRouteCoordinates}
                 pathOptions={{
-                  color: "#ffffff",
+                  color: "#d97706",
                   weight: 5,
-                  opacity: 0.95,
+                  opacity: 1,
                   lineCap: "round",
                   lineJoin: "round",
                 }}
@@ -452,13 +437,8 @@ function CampusMap({
             <CircleMarker
               key={location.id}
               center={location.projectedPoint}
-              pathOptions={getMarkerStyle(
-                location.type,
-                selectedLocationId === location.id,
-              )}
-              eventHandlers={{
-                click: () => onSelectLocation(location.id),
-              }}
+              pathOptions={markerStyle(location.type, selectedLocationId === location.id)}
+              eventHandlers={{ click: () => onSelectLocation(location.id) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
                 {location.name}
@@ -481,18 +461,18 @@ function CampusMap({
             </CircleMarker>
           ))}
 
-          {projectedUserPoint ? (
+          {projectedFocusPoint ? (
             <CircleMarker
-              center={projectedUserPoint}
+              center={projectedFocusPoint}
               radius={8}
               pathOptions={{
-                color: "#000000",
-                fillColor: "#ffffff",
+                color: "#164e63",
+                fillColor: "#22d3ee",
                 fillOpacity: 1,
                 weight: 3,
               }}
             >
-              <Popup>Your current location</Popup>
+              <Popup>{userOnCampus ? "Live focus position" : "Campus focus position"}</Popup>
             </CircleMarker>
           ) : null}
         </MapContainer>
@@ -512,7 +492,7 @@ function CampusMap({
           />
           <LiveMapController
             followUser={followUser}
-            userPosition={liveUserPosition}
+            focusPosition={liveFocusPosition}
             onReady={handleLiveReady}
           />
           <LiveMapTapSelector locations={locations} onSelectLocation={onSelectLocation} />
@@ -520,12 +500,12 @@ function CampusMap({
           {showNetwork
             ? liveNetworkSegments.map((segment, index) => (
                 <Polyline
-                  key={`live-segment-${index}`}
+                  key={`live-network-${index}`}
                   positions={segment}
                   pathOptions={{
-                    color: "#ffffff",
-                    weight: 2,
-                    opacity: 0.35,
+                    color: "#2d6a4f",
+                    weight: 2.5,
+                    opacity: 0.26,
                     lineCap: "round",
                   }}
                 />
@@ -537,9 +517,9 @@ function CampusMap({
               <Polyline
                 positions={liveRouteCoordinates}
                 pathOptions={{
-                  color: "#000000",
-                  weight: 8,
-                  opacity: 0.78,
+                  color: "#fff5e4",
+                  weight: 10,
+                  opacity: 0.92,
                   lineCap: "round",
                   lineJoin: "round",
                 }}
@@ -547,9 +527,9 @@ function CampusMap({
               <Polyline
                 positions={liveRouteCoordinates}
                 pathOptions={{
-                  color: "#ffffff",
+                  color: "#d97706",
                   weight: 5,
-                  opacity: 0.95,
+                  opacity: 1,
                   lineCap: "round",
                   lineJoin: "round",
                 }}
@@ -561,13 +541,8 @@ function CampusMap({
             <CircleMarker
               key={location.id}
               center={[location.lat, location.lng]}
-              pathOptions={getMarkerStyle(
-                location.type,
-                selectedLocationId === location.id,
-              )}
-              eventHandlers={{
-                click: () => onSelectLocation(location.id),
-              }}
+              pathOptions={markerStyle(location.type, selectedLocationId === location.id)}
+              eventHandlers={{ click: () => onSelectLocation(location.id) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
                 {location.name}
@@ -590,18 +565,18 @@ function CampusMap({
             </CircleMarker>
           ))}
 
-          {userPosition ? (
+          {liveFocusPosition ? (
             <CircleMarker
-              center={[userPosition.lat, userPosition.lng]}
+              center={liveFocusPosition}
               radius={8}
               pathOptions={{
-                color: "#000000",
-                fillColor: "#ffffff",
+                color: "#164e63",
+                fillColor: "#22d3ee",
                 fillOpacity: 1,
                 weight: 3,
               }}
             >
-              <Popup>Your current location</Popup>
+              <Popup>{userOnCampus ? "Live focus position" : "Campus focus position"}</Popup>
             </CircleMarker>
           ) : null}
         </MapContainer>
@@ -637,8 +612,13 @@ function CampusMap({
         </button>
       </div>
 
-      <div className="map-overlay-note">
-        {mapOverlayMessage}
+      <div className="map-overlay-stack">
+        {focusLabel ? <div className="map-overlay-pill">{focusLabel}</div> : null}
+        {highlightLabel ? <div className="map-overlay-pill subtle">{highlightLabel}</div> : null}
+        <div className="map-overlay-note">
+          <strong>{mapModeMessage}</strong>
+          {statusMessage ? <span>{statusMessage}</span> : null}
+        </div>
       </div>
     </div>
   );
