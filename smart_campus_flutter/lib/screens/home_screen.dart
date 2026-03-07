@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +11,7 @@ import '../models/assistant_message.dart';
 import '../models/campus_location.dart';
 import '../models/route_result.dart';
 import '../services/api_client.dart';
+import '../services/campus_navigation_engine.dart';
 import '../widgets/campus_image_map.dart';
 import '../widgets/message_bubble.dart';
 
@@ -30,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingLocations = true;
   bool _loadingRoute = false;
   String _errorText = '';
+  bool _usingBundledCampusData = false;
   List<CampusLocation> _locations = const [];
   List<CampusLocation> _nearby = const [];
   RouteResult? _route;
@@ -42,6 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _paceMultiplier = 1.0;
   bool _useGpsSource = true;
   Position? _position;
+  bool _gpsOnCampus = false;
   String _gpsStatus = 'Checking GPS...';
   StreamSubscription<Position>? _gpsSub;
   DateTime _lastNearby = DateTime.fromMillisecondsSinceEpoch(0);
@@ -57,7 +61,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _messages = const [
       AssistantMessage(
         role: MessageRole.assistant,
-        content: 'Ask about nearby places, your location, or building info.',
+        content:
+            'Ask about nearby places, your current campus area, route ideas, or any mapped Parul University building.',
       ),
     ];
     _searchCtrl.addListener(() => setState(() {}));
@@ -77,13 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(apiBaseUrlPrefKey);
     if (saved != null && saved.trim().isNotEmpty) {
-      final normalized = _normalizeBaseUrl(saved);
-      _apiBaseUrl = normalized == emulatorApiBaseUrl
-          ? defaultApiBaseUrl
-          : normalized;
-      if (_apiBaseUrl != normalized) {
-        await prefs.setString(apiBaseUrlPrefKey, _apiBaseUrl);
-      }
+      _apiBaseUrl = _normalizeBaseUrl(saved);
     }
 
     _favoriteIds = (prefs.getStringList(favoriteLocationIdsPrefKey) ?? const [])
@@ -107,33 +106,108 @@ class _HomeScreenState extends State<HomeScreen> {
     return v;
   }
 
+  bool get _isAndroidRuntime =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  List<String> _candidateApiBaseUrls([String? preferred]) {
+    final candidates = <String>[];
+    final seen = <String>{};
+
+    void add(String value) {
+      final normalized = _normalizeBaseUrl(value);
+      if (normalized.isEmpty || !seen.add(normalized)) {
+        return;
+      }
+      candidates.add(normalized);
+    }
+
+    if (preferred != null && preferred.trim().isNotEmpty) {
+      add(preferred);
+    }
+
+    if (_isAndroidRuntime) {
+      add(usbDebugApiBaseUrl);
+      add(phoneApiBaseUrl);
+      add(emulatorApiBaseUrl);
+      return candidates;
+    }
+
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      add(desktopWebApiBaseUrl);
+      add(phoneApiBaseUrl);
+      return candidates;
+    }
+
+    add(defaultApiBaseUrl);
+    return candidates;
+  }
+
+  Future<void> _persistApiBaseUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(apiBaseUrlPrefKey, _normalizeBaseUrl(url));
+  }
+
   ApiClient get _api => ApiClient(baseUrl: _apiBaseUrl);
 
-  Future<void> _checkBackend() async {
-    try {
-      final info = await _api.fetchHealthInfo();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _backendOnline = info.backendOnline;
-        _dbConnected = info.databaseConnected;
-        _dbMode = info.databaseMode;
-        _mongoConfigured = info.mongoConfigured;
-        _dbError = info.databaseError;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _backendOnline = false;
-        _dbConnected = false;
-        _dbMode = 'unknown';
-        _mongoConfigured = false;
-        _dbError = null;
-      });
+  CampusLocation get _campusAnchor =>
+      CampusNavigationEngine.campusAnchor(_locations);
+
+  Position? get _effectiveUserPosition => _gpsOnCampus ? _position : null;
+
+  String get _dataSourceLabel => _usingBundledCampusData
+      ? 'Bundled Parul campus data'
+      : 'Live backend sync';
+
+  String get _focusModeLabel => _gpsOnCampus
+      ? 'Following your live campus position'
+      : 'Pinned to Parul University campus';
+
+  String get _statusBannerText {
+    if (_position != null && !_gpsOnCampus) {
+      return 'Your GPS appears outside the mapped Parul University campus, so the app is keeping navigation pinned to campus and using Entry Gate as the starting area.';
     }
+    if (_usingBundledCampusData) {
+      return 'Live backend is unavailable. The app has switched to bundled Parul University data for browsing, nearby suggestions, local routing, and assistant replies.';
+    }
+    return '';
+  }
+
+  Future<void> _checkBackend() async {
+    final currentBaseUrl = _apiBaseUrl;
+
+    for (final candidate in _candidateApiBaseUrls(_apiBaseUrl)) {
+      try {
+        final info = await ApiClient(baseUrl: candidate).fetchHealthInfo();
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _apiBaseUrl = candidate;
+          _backendOnline = info.backendOnline;
+          _dbConnected = info.databaseConnected;
+          _dbMode = info.databaseMode;
+          _mongoConfigured = info.mongoConfigured;
+          _dbError = info.databaseError;
+        });
+        if (candidate != currentBaseUrl) {
+          await _persistApiBaseUrl(candidate);
+        }
+        return;
+      } catch (_) {
+        continue;
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _backendOnline = false;
+      _dbConnected = false;
+      _dbMode = 'unknown';
+      _mongoConfigured = false;
+      _dbError = null;
+    });
   }
 
   Future<void> _loadLocations({bool showLoader = true}) async {
@@ -161,6 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _recentDestinationIds = cleanedRecent;
         _loadingLocations = false;
         _backendOnline = true;
+        _usingBundledCampusData = false;
         if (_locations.isNotEmpty) {
           _sourceId = _contains(_sourceId) ? _sourceId : _locations.first.id;
           _destinationId = _contains(_destinationId)
@@ -178,11 +253,33 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) {
         return;
       }
+      final fallbackLocations = CampusNavigationEngine.bundledLocations;
+      final validIds = fallbackLocations.map((location) => location.id).toSet();
       setState(() {
+        _locations = fallbackLocations;
+        _favoriteIds = _favoriteIds
+            .where((id) => validIds.contains(id))
+            .toSet();
+        _recentDestinationIds = _recentDestinationIds
+            .where((id) => validIds.contains(id))
+            .toList();
         _loadingLocations = false;
         _backendOnline = false;
-        _errorText = e.toString();
+        _usingBundledCampusData = true;
+        if (_locations.isNotEmpty) {
+          _sourceId = _contains(_sourceId) ? _sourceId : _campusAnchor.id;
+          _destinationId = _contains(_destinationId)
+              ? _destinationId
+              : _locations.first.id;
+          _selected = _contains(_selected?.id)
+              ? _find(_selected!.id)
+              : _campusAnchor;
+        }
+        _errorText = '';
       });
+      unawaited(_saveFavorites());
+      unawaited(_saveRecentDestinations());
+      await _refreshNearby(force: true);
     }
   }
 
@@ -238,6 +335,198 @@ class _HomeScreenState extends State<HomeScreen> {
     return ids.map((id) => map[id]).whereType<CampusLocation>().toList();
   }
 
+  void _selectLocation(CampusLocation location) {
+    setState(() {
+      _selected = location;
+      _destinationId = location.id;
+    });
+  }
+
+  CampusLocation? _nearestMatch({
+    String? type,
+    bool Function(CampusLocation location)? predicate,
+  }) {
+    if (_locations.isEmpty) {
+      return null;
+    }
+
+    final referenceLat = _effectiveUserPosition?.latitude ?? _campusAnchor.lat;
+    final referenceLng = _effectiveUserPosition?.longitude ?? _campusAnchor.lng;
+
+    final matches = CampusNavigationEngine.findNearbyLocations(
+      _locations,
+      lat: referenceLat,
+      lng: referenceLng,
+      radiusMeters: 2500,
+      limit: _locations.length,
+      predicate: (location) {
+        final typeMatches = type == null || location.type == type;
+        final predicateMatches = predicate == null || predicate(location);
+        return typeMatches && predicateMatches;
+      },
+    );
+
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  Future<void> _routeToQuickDestination(CampusLocation? location) async {
+    if (location == null) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No matching campus destination found.')),
+      );
+      return;
+    }
+
+    _selectLocation(location);
+    await _findRoute();
+  }
+
+  String _formatDistance(double meters) {
+    if (meters >= 1000) {
+      return '${(meters / 1000).toStringAsFixed(2)} km';
+    }
+    return '${meters.round()} m';
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'academic':
+        return Icons.school_rounded;
+      case 'admin':
+        return Icons.apartment_rounded;
+      case 'hospital':
+        return Icons.local_hospital_rounded;
+      case 'dining':
+        return Icons.restaurant_rounded;
+      case 'sports':
+        return Icons.sports_soccer_rounded;
+      case 'residential':
+        return Icons.king_bed_rounded;
+      case 'parking':
+        return Icons.local_parking_rounded;
+      case 'transport':
+        return Icons.directions_bus_rounded;
+      case 'bank':
+        return Icons.account_balance_rounded;
+      case 'entry':
+        return Icons.login_rounded;
+      default:
+        return Icons.place_rounded;
+    }
+  }
+
+  Color _colorForType(String type) {
+    switch (type) {
+      case 'academic':
+        return const Color(0xFF7DE2D1);
+      case 'admin':
+        return const Color(0xFFFFC857);
+      case 'hospital':
+        return const Color(0xFF73E17A);
+      case 'dining':
+        return const Color(0xFFFFA868);
+      case 'sports':
+        return const Color(0xFF8EA6FF);
+      case 'residential':
+        return const Color(0xFF8FD3FF);
+      case 'parking':
+        return const Color(0xFFF3E37C);
+      case 'transport':
+        return const Color(0xFFD9D9D9);
+      case 'bank':
+        return const Color(0xFFFF8FD6);
+      case 'entry':
+        return const Color(0xFFB7A0FF);
+      default:
+        return const Color(0xFFE6E6E6);
+    }
+  }
+
+  Widget _metricTile({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0x22000000),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0x30FFFFFF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF9FF0E4)),
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(color: Color(0xFFD0D7DB), fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _quickAction({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0x30FFFFFF)),
+            color: const Color(0x15000000),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFF0E1E22),
+                ),
+                child: Icon(icon, color: const Color(0xFF86E7DB)),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Color(0xFF9EA3A9), fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   int get _displayEstimatedMinutes {
     if (_route == null) {
       return 0;
@@ -285,11 +574,18 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
       final current = await Geolocator.getCurrentPosition();
+      final onCampus = CampusNavigationEngine.isOnCampus(
+        _locations,
+        lat: current.latitude,
+        lng: current.longitude,
+      );
       if (mounted) {
         setState(() {
           _position = current;
-          _gpsStatus =
-              'GPS active (${current.latitude.toStringAsFixed(5)}, ${current.longitude.toStringAsFixed(5)})';
+          _gpsOnCampus = onCampus;
+          _gpsStatus = onCampus
+              ? 'On campus (${current.latitude.toStringAsFixed(5)}, ${current.longitude.toStringAsFixed(5)})'
+              : 'GPS active but outside campus focus';
         });
       }
       await _refreshNearby(force: true);
@@ -304,10 +600,17 @@ class _HomeScreenState extends State<HomeScreen> {
             if (!mounted) {
               return;
             }
+            final onCampus = CampusNavigationEngine.isOnCampus(
+              _locations,
+              lat: pos.latitude,
+              lng: pos.longitude,
+            );
             setState(() {
               _position = pos;
-              _gpsStatus =
-                  'GPS active (${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)})';
+              _gpsOnCampus = onCampus;
+              _gpsStatus = onCampus
+                  ? 'On campus (${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)})'
+                  : 'GPS active but outside campus focus';
             });
             unawaited(_refreshNearby());
           });
@@ -320,7 +623,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _refreshNearby({bool force = false}) async {
-    if (_position == null) {
+    if (_locations.isEmpty) {
       return;
     }
     final now = DateTime.now();
@@ -328,27 +631,39 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _lastNearby = now;
+
+    final referenceLat = _effectiveUserPosition?.latitude ?? _campusAnchor.lat;
+    final referenceLng = _effectiveUserPosition?.longitude ?? _campusAnchor.lng;
+
     try {
-      final nearby = await _api.fetchNearby(
-        lat: _position!.latitude,
-        lng: _position!.longitude,
-      );
+      final nearby = _backendOnline && !_usingBundledCampusData
+          ? await _api.fetchNearby(lat: referenceLat, lng: referenceLng)
+          : CampusNavigationEngine.findNearbyLocations(
+              _locations,
+              lat: referenceLat,
+              lng: referenceLng,
+            );
       if (!mounted) {
         return;
       }
       setState(() => _nearby = nearby);
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _nearby = CampusNavigationEngine.findNearbyLocations(
+          _locations,
+          lat: referenceLat,
+          lng: referenceLng,
+        );
+      });
+    }
   }
 
   Future<void> _findRoute() async {
     if (_destinationId == null) {
       setState(() => _errorText = 'Choose destination.');
-      return;
-    }
-    if (_useGpsSource && _position == null) {
-      setState(
-        () => _errorText = 'GPS source selected but location unavailable.',
-      );
       return;
     }
     if (!_useGpsSource && _sourceId == null) {
@@ -359,28 +674,75 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadingRoute = true;
       _errorText = '';
     });
+    final fallbackSourceId = _useGpsSource && !_gpsOnCampus
+        ? _campusAnchor.id
+        : _sourceId;
+    final sourcePosition = _useGpsSource && _gpsOnCampus ? _position : null;
+
     try {
-      final route = await _api.fetchRoute(
-        sourceId: _useGpsSource ? null : _sourceId,
+      RouteResult? route;
+      if (_backendOnline && !_usingBundledCampusData) {
+        route = await _api.fetchRoute(
+          sourceId: _useGpsSource ? fallbackSourceId : _sourceId,
+          destinationId: _destinationId!,
+          sourcePosition: sourcePosition,
+        );
+      }
+
+      route ??= CampusNavigationEngine.calculateRoute(
+        locations: _locations,
+        sourceId: _useGpsSource ? fallbackSourceId : _sourceId,
         destinationId: _destinationId!,
-        sourcePosition: _useGpsSource ? _position : null,
+        sourceLat: sourcePosition?.latitude,
+        sourceLng: sourcePosition?.longitude,
       );
+
       if (!mounted) {
         return;
       }
+
+      if (route == null) {
+        setState(() {
+          _route = null;
+          _errorText = 'No campus route was found between those locations.';
+        });
+        return;
+      }
+
+      final resolvedRoute = route;
+
       setState(() {
-        _route = route;
-        _selected = route.destination;
+        _route = resolvedRoute;
+        _selected = resolvedRoute.destination;
+        _errorText = '';
       });
-      await _pushRecentDestination(route.destination.id);
+      await _pushRecentDestination(resolvedRoute.destination.id);
     } catch (e) {
+      final fallbackRoute = CampusNavigationEngine.calculateRoute(
+        locations: _locations,
+        sourceId: _useGpsSource ? fallbackSourceId : _sourceId,
+        destinationId: _destinationId!,
+        sourceLat: sourcePosition?.latitude,
+        sourceLng: sourcePosition?.longitude,
+      );
+
       if (!mounted) {
         return;
       }
-      setState(() {
-        _route = null;
-        _errorText = e.toString();
-      });
+
+      if (fallbackRoute != null) {
+        setState(() {
+          _route = fallbackRoute;
+          _selected = fallbackRoute.destination;
+          _errorText = '';
+        });
+        await _pushRecentDestination(fallbackRoute.destination.id);
+      } else {
+        setState(() {
+          _route = null;
+          _errorText = e.toString();
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _loadingRoute = false);
@@ -405,7 +767,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _scrollAssistant();
     try {
-      final reply = await _api.askAssistant(message: msg, position: _position);
+      final reply = _backendOnline && !_usingBundledCampusData
+          ? await _api.askAssistant(
+              message: msg,
+              position: _effectiveUserPosition,
+            )
+          : CampusNavigationEngine.assistantReply(
+              locations: _locations,
+              message: msg,
+              userLat: _effectiveUserPosition?.latitude ?? _campusAnchor.lat,
+              userLng: _effectiveUserPosition?.longitude ?? _campusAnchor.lng,
+              userOnCampus: _gpsOnCampus,
+            );
       if (!mounted) {
         return;
       }
@@ -417,16 +790,21 @@ class _HomeScreenState extends State<HomeScreen> {
         _assistantLoading = false;
       });
     } catch (e) {
+      final fallbackReply = CampusNavigationEngine.assistantReply(
+        locations: _locations,
+        message: msg,
+        userLat: _effectiveUserPosition?.latitude ?? _campusAnchor.lat,
+        userLng: _effectiveUserPosition?.longitude ?? _campusAnchor.lng,
+        userOnCampus: _gpsOnCampus,
+      );
+
       if (!mounted) {
         return;
       }
       setState(() {
         _messages = [
           ..._messages,
-          AssistantMessage(
-            role: MessageRole.assistant,
-            content: 'Assistant error: $e',
-          ),
+          AssistantMessage(role: MessageRole.assistant, content: fallbackReply),
         ];
         _assistantLoading = false;
       });
@@ -489,6 +867,10 @@ class _HomeScreenState extends State<HomeScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
+                OutlinedButton(
+                  onPressed: () => ctrl.text = usbDebugApiBaseUrl,
+                  child: const Text('Use USB URL'),
+                ),
                 OutlinedButton(
                   onPressed: () => ctrl.text = phoneApiBaseUrl,
                   child: const Text('Use Phone URL'),
@@ -614,16 +996,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final favoriteLocations = _locationsFromIds(_favoriteIds.toList()..sort());
     final recentDestinations = _locationsFromIds(_recentDestinationIds);
+    final routeLegs = _route == null
+        ? const <CampusRouteLeg>[]
+        : CampusNavigationEngine.buildRouteLegs(_route!.path);
+    final routeSourceLabel = _route == null
+        ? (_useGpsSource
+              ? (_gpsOnCampus ? 'Live campus GPS' : _campusAnchor.name)
+              : (_sourceId == null ? 'Manual source' : _find(_sourceId!).name))
+        : _route!.source.name;
+    final activeDestination = _selected ?? _campusAnchor;
+    final activeColor = _colorForType(activeDestination.type);
 
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Smart Campus Navigator'),
+          title: const Text('Parul University Navigator'),
+          titleSpacing: 16,
           flexibleSpace: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0x770F1B21), Color(0x22050607)],
+                colors: [
+                  Color(0xCC102028),
+                  Color(0x7706080A),
+                  Color(0xFF020508),
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -655,6 +1052,259 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
                 children: [
                   Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            activeColor.withValues(alpha: 0.26),
+                            const Color(0xAA081014),
+                            const Color(0xFF05080B),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    color: const Color(0x22000000),
+                                    border: Border.all(
+                                      color: const Color(0x35FFFFFF),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.explore_rounded,
+                                    color: Color(0xFF9EF0E4),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Parul University Wayfinding',
+                                        style: TextStyle(
+                                          fontSize: 19,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Smooth in-campus navigation for admissions, classrooms, hostels, dining, and hospital blocks.',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.78,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                Chip(
+                                  avatar: Icon(
+                                    _backendOnline
+                                        ? Icons.cloud_done_rounded
+                                        : Icons.cloud_off_rounded,
+                                    size: 16,
+                                  ),
+                                  label: Text(_dataSourceLabel),
+                                ),
+                                Chip(
+                                  avatar: Icon(
+                                    _gpsOnCampus
+                                        ? Icons.gps_fixed_rounded
+                                        : Icons.map_rounded,
+                                    size: 16,
+                                  ),
+                                  label: Text(_focusModeLabel),
+                                ),
+                                Chip(
+                                  avatar: const Icon(
+                                    Icons.flag_rounded,
+                                    size: 16,
+                                  ),
+                                  label: Text(activeDestination.name),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                _metricTile(
+                                  icon: Icons.place_rounded,
+                                  label: 'Mapped places',
+                                  value: '${_locations.length}',
+                                ),
+                                const SizedBox(width: 10),
+                                _metricTile(
+                                  icon: Icons.near_me_rounded,
+                                  label: 'Nearby now',
+                                  value: '${_nearby.length}',
+                                ),
+                                const SizedBox(width: 10),
+                                _metricTile(
+                                  icon: Icons.route_rounded,
+                                  label: 'Route ETA',
+                                  value: _route == null
+                                      ? '--'
+                                      : '$_displayEstimatedMinutes min',
+                                ),
+                              ],
+                            ),
+                            if (recentDestinations.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              const Text(
+                                'Recent destinations',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: recentDestinations
+                                    .take(4)
+                                    .map(
+                                      (location) => ActionChip(
+                                        avatar: const Icon(
+                                          Icons.history_rounded,
+                                          size: 16,
+                                        ),
+                                        label: Text(location.name),
+                                        onPressed: () =>
+                                            _selectLocation(location),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_statusBannerText.isNotEmpty)
+                    Card(
+                      color: const Color(0x1D5FD1C5),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              color: Color(0xFF9EF0E4),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(_statusBannerText)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_statusBannerText.isNotEmpty) const SizedBox(height: 10),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _sectionHeader(
+                            icon: Icons.flash_on_rounded,
+                            title: 'Quick Campus Actions',
+                            subtitle:
+                                'One tap to plan routes to the most common campus needs',
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              _quickAction(
+                                icon: Icons.meeting_room_rounded,
+                                title: 'Admissions',
+                                subtitle: 'Jump to C2 Admission Cell',
+                                onTap: () => _routeToQuickDestination(
+                                  CampusNavigationEngine.findById(
+                                    _locations,
+                                    'c2-admission-cell',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              _quickAction(
+                                icon: Icons.local_library_rounded,
+                                title: 'Nearest Library',
+                                subtitle: 'Pick the closest study block',
+                                onTap: () => _routeToQuickDestination(
+                                  _nearestMatch(
+                                    predicate: (location) =>
+                                        location.name.toLowerCase().contains(
+                                          'library',
+                                        ) ||
+                                        location.aliases.any(
+                                          (alias) => alias
+                                              .toLowerCase()
+                                              .contains('library'),
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              _quickAction(
+                                icon: Icons.restaurant_rounded,
+                                title: 'Nearest Food',
+                                subtitle: 'Route to the closest food court',
+                                onTap: () => _routeToQuickDestination(
+                                  _nearestMatch(type: 'dining'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              _quickAction(
+                                icon: Icons.local_hospital_rounded,
+                                title: 'Medical Help',
+                                subtitle: 'Navigate to hospital support',
+                                onTap: () => _routeToQuickDestination(
+                                  _nearestMatch(
+                                    predicate: (location) =>
+                                        location.type == 'hospital' ||
+                                        location.name.toLowerCase().contains(
+                                          'medical',
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Card(
                     child: Padding(
                       padding: const EdgeInsets.all(14),
                       child: Column(
@@ -664,7 +1314,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: Icons.podcasts_rounded,
                             title: 'System Status',
                             subtitle:
-                                'Live backend, database, and GPS telemetry',
+                                'Backend, database, GPS, and campus focus state',
                           ),
                           const SizedBox(height: 8),
                           Wrap(
@@ -683,16 +1333,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   'DB: ${_dbMode.toUpperCase()}${_dbConnected ? " Connected" : ""}',
                                 ),
                               ),
-                              Chip(
-                                label: Text('Locations: ${_locations.length}'),
-                              ),
-                              Chip(
-                                label: Text(
-                                  _useGpsSource
-                                      ? 'Source: GPS'
-                                      : 'Source: Manual',
-                                ),
-                              ),
+                              Chip(label: Text('GPS: $_gpsStatus')),
+                              Chip(label: Text('Source: $routeSourceLabel')),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -703,18 +1345,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               fontSize: 12,
                             ),
                           ),
-                          Text(
-                            'GPS: $_gpsStatus',
-                            style: const TextStyle(
-                              color: Color(0xFFB8B8B8),
-                              fontSize: 12,
-                            ),
-                          ),
                           if (_dbMode == 'seed')
                             Text(
                               _mongoConfigured
-                                  ? 'MongoDB unavailable. Using seed fallback data.'
-                                  : 'MongoDB not configured. Using seed fallback data.',
+                                  ? 'MongoDB is configured but currently unavailable. The backend is serving seed data.'
+                                  : 'MongoDB is not configured. The backend is serving seed data.',
                               style: const TextStyle(
                                 color: Color(0xFFB8B8B8),
                                 fontSize: 12,
@@ -731,35 +1366,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (!_backendOnline &&
                               _apiBaseUrl.contains('10.0.2.2'))
                             Text(
-                              'Tip: 10.0.2.2 works only on the Android emulator. For your phone use $phoneApiBaseUrl.',
-                              style: TextStyle(
+                              'Tip: 10.0.2.2 works only on the Android emulator. For a real phone, update the API URL to your PC LAN address in settings.',
+                              style: const TextStyle(
                                 color: Color(0xFFB8B8B8),
                                 fontSize: 12,
                               ),
                             ),
-                          if (recentDestinations.isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Recent Destinations',
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                          if (!_backendOnline &&
+                              _apiBaseUrl.contains('127.0.0.1'))
+                            Text(
+                              'Tip: 127.0.0.1 on Android needs USB port reverse. If USB is disconnected, switch to the phone LAN URL in settings.',
+                              style: const TextStyle(
+                                color: Color(0xFFB8B8B8),
+                                fontSize: 12,
+                              ),
                             ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: recentDestinations
-                                  .map(
-                                    (location) => ActionChip(
-                                      label: Text(location.name),
-                                      onPressed: () => setState(() {
-                                        _destinationId = location.id;
-                                        _selected = location;
-                                      }),
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -774,7 +1395,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           _sectionHeader(
                             icon: Icons.route_rounded,
                             title: 'Route Planner',
-                            subtitle: 'Shortest path with live map overlays',
+                            subtitle:
+                                'Shortest path with campus-safe source fallback and live map overlays',
                           ),
                           SwitchListTile(
                             dense: true,
@@ -783,6 +1405,33 @@ class _HomeScreenState extends State<HomeScreen> {
                             value: _useGpsSource,
                             onChanged: (v) => setState(() => _useGpsSource = v),
                           ),
+                          if (_useGpsSource && !_gpsOnCampus)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                color: const Color(0x14000000),
+                                border: Border.all(
+                                  color: const Color(0x25FFFFFF),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.my_location_rounded,
+                                    color: Color(0xFF9EF0E4),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'GPS is currently outside campus focus. Route planning will start from ${_campusAnchor.name}.',
+                                      style: const TextStyle(fontSize: 12.5),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           if (!_useGpsSource)
                             DropdownButtonFormField<String>(
                               initialValue: _contains(_sourceId)
@@ -817,8 +1466,64 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (v) =>
-                                setState(() => _destinationId = v),
+                            onChanged: (v) {
+                              if (v == null) {
+                                return;
+                              }
+                              _selectLocation(_find(v));
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              color: const Color(0x12000000),
+                              border: Border.all(
+                                color: const Color(0x25FFFFFF),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: activeColor.withValues(alpha: 0.18),
+                                  ),
+                                  child: Icon(
+                                    _iconForType(activeDestination.type),
+                                    color: activeColor,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Selected destination',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.68,
+                                          ),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        activeDestination.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                           SizedBox(
@@ -861,10 +1566,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                         size: 15,
                                       ),
                                       label: Text(location.name),
-                                      onPressed: () => setState(() {
-                                        _destinationId = location.id;
-                                        _selected = location;
-                                      }),
+                                      onPressed: () =>
+                                          _selectLocation(location),
                                     ),
                                   )
                                   .toList(),
@@ -923,11 +1626,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                     locations: _locations,
                                     routePath: _route?.path ?? const [],
                                     selectedLocationId: _selected?.id,
-                                    userPosition: _position,
-                                    onSelectLocation: (id) => setState(() {
-                                      _selected = _find(id);
-                                      _destinationId = id;
-                                    }),
+                                    userPosition: _effectiveUserPosition,
+                                    focusLabel: _focusModeLabel,
+                                    highlightLabel: activeDestination.name,
+                                    onSelectLocation: (id) =>
+                                        _selectLocation(_find(id)),
                                   ),
                           ),
                         ],
@@ -945,14 +1648,62 @@ class _HomeScreenState extends State<HomeScreen> {
                             _sectionHeader(
                               icon: Icons.timeline_rounded,
                               title: 'Route Summary',
-                              subtitle: 'Customize pace and copy directions',
+                              subtitle:
+                                  'Customize pace, inspect legs, and copy directions',
                             ),
                             const SizedBox(height: 10),
-                            Text(
-                              'Distance: ${_route!.totalDistanceKm.toStringAsFixed(2)} km',
-                            ),
-                            Text(
-                              'Estimated walk: $_displayEstimatedMinutes min',
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                color: const Color(0x12000000),
+                                border: Border.all(
+                                  color: const Color(0x25FFFFFF),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'From: ${_route!.source.name}\nTo: ${_route!.destination.name}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      color: const Color(0xFF0E1E22),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${_route!.totalDistanceKm.toStringAsFixed(2)} km',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        Text(
+                                          '$_displayEstimatedMinutes min',
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.72,
+                                            ),
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 8),
                             Wrap(
@@ -972,6 +1723,33 @@ class _HomeScreenState extends State<HomeScreen> {
                                   .map((loc) => Chip(label: Text(loc.name)))
                                   .toList(),
                             ),
+                            if (routeLegs.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Route legs',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 8),
+                              ...routeLegs.asMap().entries.map(
+                                (entry) => ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: const Color(0x22000000),
+                                    child: Text(
+                                      '${entry.key + 1}',
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                  ),
+                                  title: Text(entry.value.to.name),
+                                  subtitle: Text(entry.value.from.name),
+                                  trailing: Text(
+                                    _formatDistance(entry.value.distanceMeters),
+                                  ),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 10),
                             OutlinedButton.icon(
                               onPressed: _copyRouteSummary,
@@ -993,14 +1771,50 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             Row(
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    _selected!.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: _colorForType(
+                                      _selected!.type,
+                                    ).withValues(alpha: 0.18),
+                                  ),
+                                  child: Icon(
+                                    _iconForType(_selected!.type),
+                                    color: _colorForType(_selected!.type),
                                   ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _selected!.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${_selected!.id.toUpperCase()} • ${_selected!.type}',
+                                        style: const TextStyle(
+                                          color: Color(0xFF9EA3A9),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                FilledButton.tonalIcon(
+                                  onPressed: () =>
+                                      _routeToQuickDestination(_selected),
+                                  icon: const Icon(Icons.navigation_rounded),
+                                  label: const Text('Route'),
+                                ),
+                                const SizedBox(width: 6),
                                 IconButton(
                                   tooltip: _isFavorite(_selected!.id)
                                       ? 'Remove favorite'
@@ -1018,8 +1832,36 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 10),
                             Text(_selected!.description),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                Chip(
+                                  avatar: const Icon(
+                                    Icons.place_outlined,
+                                    size: 16,
+                                  ),
+                                  label: Text(
+                                    '${_selected!.lat.toStringAsFixed(5)}, ${_selected!.lng.toStringAsFixed(5)}',
+                                  ),
+                                ),
+                                if (_selected!.distanceMeters != null)
+                                  Chip(
+                                    avatar: const Icon(
+                                      Icons.near_me_outlined,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      _formatDistance(
+                                        _selected!.distanceMeters!,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                             if (_selected!.facilities.isNotEmpty) ...[
                               const SizedBox(height: 8),
                               Wrap(
@@ -1052,7 +1894,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           _sectionHeader(
                             icon: Icons.near_me_rounded,
                             title: 'Nearby Places',
-                            subtitle: 'Auto-updates from your GPS position',
+                            subtitle: _gpsOnCampus
+                                ? 'Auto-updates from your live campus position'
+                                : 'Showing places nearest to the Parul campus focus point',
                           ),
                           const SizedBox(height: 8),
                           if (_nearby.isEmpty)
@@ -1065,6 +1909,17 @@ class _HomeScreenState extends State<HomeScreen> {
                               (loc) => ListTile(
                                 dense: true,
                                 contentPadding: EdgeInsets.zero,
+                                leading: CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: _colorForType(
+                                    loc.type,
+                                  ).withValues(alpha: 0.18),
+                                  child: Icon(
+                                    _iconForType(loc.type),
+                                    size: 18,
+                                    color: _colorForType(loc.type),
+                                  ),
+                                ),
                                 title: Text(loc.name),
                                 subtitle: Text(loc.type),
                                 trailing: Text(
@@ -1072,10 +1927,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ? '-'
                                       : '${loc.distanceMeters!.round()} m',
                                 ),
-                                onTap: () => setState(() {
-                                  _selected = _find(loc.id);
-                                  _destinationId = loc.id;
-                                }),
+                                onTap: () => _selectLocation(_find(loc.id)),
                               ),
                             ),
                         ],
@@ -1142,6 +1994,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                   (loc) => ListTile(
                                     dense: true,
                                     contentPadding: EdgeInsets.zero,
+                                    leading: CircleAvatar(
+                                      radius: 18,
+                                      backgroundColor: _colorForType(
+                                        loc.type,
+                                      ).withValues(alpha: 0.18),
+                                      child: Icon(
+                                        _iconForType(loc.type),
+                                        size: 18,
+                                        color: _colorForType(loc.type),
+                                      ),
+                                    ),
                                     title: Text(loc.name),
                                     subtitle: Text(
                                       '${loc.id.toUpperCase()} • ${loc.type}',
@@ -1161,10 +2024,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             : null,
                                       ),
                                     ),
-                                    onTap: () => setState(() {
-                                      _selected = loc;
-                                      _destinationId = loc.id;
-                                    }),
+                                    onTap: () => _selectLocation(loc),
                                   ),
                                 ),
                         ],
@@ -1184,17 +2044,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       runSpacing: 8,
                       children: [
                         ActionChip(
+                          avatar: const Icon(
+                            Icons.my_location_rounded,
+                            size: 16,
+                          ),
                           label: const Text('Where am I?'),
                           onPressed: () => _sendMessage('Where am I?'),
                         ),
                         ActionChip(
-                          label: const Text('Nearby places'),
-                          onPressed: () => _sendMessage('Show nearby places'),
+                          avatar: const Icon(
+                            Icons.restaurant_rounded,
+                            size: 16,
+                          ),
+                          label: const Text('Nearest Food'),
+                          onPressed: () =>
+                              _sendMessage('Show nearby food courts'),
                         ),
                         ActionChip(
+                          avatar: const Icon(
+                            Icons.local_library_rounded,
+                            size: 16,
+                          ),
                           label: const Text('Library details'),
                           onPressed: () =>
                               _sendMessage('Tell me about library'),
+                        ),
+                        ActionChip(
+                          avatar: const Icon(
+                            Icons.meeting_room_rounded,
+                            size: 16,
+                          ),
+                          label: const Text('Admissions'),
+                          onPressed: () =>
+                              _sendMessage('Tell me about admission cell'),
                         ),
                       ],
                     ),
@@ -1257,9 +2139,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Padding(
                     padding: EdgeInsets.all(14),
                     child: Text(
-                      'Flutter Android app for Smart Campus Navigation. '
-                      'Uses backend APIs for locations, nearby, shortest route, and assistant chat. '
-                      'Includes favorites, recent destinations, live map overlays, and copyable route summaries.',
+                      'This Flutter app is tuned specifically for Parul University campus navigation. '
+                      'It supports campus-focused GPS behavior, quick destination shortcuts, favorites, recent destinations, route leg breakdowns, and assistant guidance.',
                     ),
                   ),
                 ),
@@ -1268,9 +2149,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Padding(
                     padding: EdgeInsets.all(14),
                     child: Text(
-                      'Backend for real Android phone: $phoneApiBaseUrl\n'
+                      'When the backend is offline, the app now falls back to bundled Parul University map data for browsing, nearby suggestions, local routing, and assistant replies.\n\n'
                       'Backend for emulator: $emulatorApiBaseUrl\n'
-                      'Use settings icon to change API URL.',
+                      'Backend for USB debugging with adb reverse: $usbDebugApiBaseUrl\n'
+                      'Backend for real Android phone or wireless debugging: replace with your PC LAN IP in settings.',
                     ),
                   ),
                 ),

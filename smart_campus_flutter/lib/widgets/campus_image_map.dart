@@ -14,7 +14,9 @@ class CampusImageMap extends StatefulWidget {
     required this.routePath,
     required this.selectedLocationId,
     required this.userPosition,
+    required this.focusLabel,
     required this.onSelectLocation,
+    this.highlightLabel,
     super.key,
   });
 
@@ -22,6 +24,8 @@ class CampusImageMap extends StatefulWidget {
   final List<CampusLocation> routePath;
   final String? selectedLocationId;
   final Position? userPosition;
+  final String focusLabel;
+  final String? highlightLabel;
   final ValueChanged<String> onSelectLocation;
 
   @override
@@ -88,10 +92,7 @@ class _CampusImageMapState extends State<CampusImageMap> {
             mapController: _mapController,
             options: MapOptions(
               crs: const CrsSimple(),
-              initialCenter: const LatLng(
-                -guideMapCanvasHeight / 2,
-                guideMapCanvasWidth / 2,
-              ),
+              initialCenter: const LatLng(0, 0),
               initialZoom: _liveZoom,
               initialCameraFit: CameraFit.bounds(
                 bounds: guideMapBounds,
@@ -171,6 +172,32 @@ class _CampusImageMapState extends State<CampusImageMap> {
           userPoint: userPoint,
         ),
         _buildSideControls(projection, userPoint),
+        Positioned(
+          left: 8,
+          right: 70,
+          bottom: 8,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xC80A0A0A),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0x26FFFFFF)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                child: Text(
+                  widget.highlightLabel == null
+                      ? widget.focusLabel
+                      : '${widget.focusLabel} • Selected: ${widget.highlightLabel}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFFD7D7D7),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -182,7 +209,7 @@ class _CampusImageMapState extends State<CampusImageMap> {
   }) {
     final statusText = routeActive
         ? 'Live route is pinned to the campus guide map'
-        : 'Tap any building marker to plan from the route panel';
+        : widget.focusLabel;
 
     return Positioned(
       top: 8,

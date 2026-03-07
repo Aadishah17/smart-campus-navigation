@@ -8,12 +8,15 @@ import '../models/campus_location.dart';
 
 const double guideMapCanvasWidth = 1765;
 const double guideMapCanvasHeight = 2491;
+const double guideMapLatHalfSpan = 85;
+const double guideMapLngHalfSpan =
+    guideMapLatHalfSpan * (guideMapCanvasWidth / guideMapCanvasHeight);
 
 const Size guideMapCanvasSize = Size(guideMapCanvasWidth, guideMapCanvasHeight);
 
 final LatLngBounds guideMapBounds = LatLngBounds(
-  const LatLng(-guideMapCanvasHeight, 0),
-  const LatLng(0, guideMapCanvasWidth),
+  const LatLng(-guideMapLatHalfSpan, -guideMapLngHalfSpan),
+  const LatLng(guideMapLatHalfSpan, guideMapLngHalfSpan),
 );
 
 class GuideMapProjection {
@@ -142,7 +145,16 @@ class GuideMapProjection {
     return [mapPointForLocation(from), mapPointForLocation(to)];
   }
 
-  LatLng toMapPoint(Offset offset) => LatLng(-offset.dy, offset.dx);
+  LatLng toMapPoint(Offset offset) {
+    final xRatio = (offset.dx / guideMapCanvasWidth).clamp(0.0, 1.0);
+    final yRatio = (offset.dy / guideMapCanvasHeight).clamp(0.0, 1.0);
+
+    final latitude = guideMapLatHalfSpan - (yRatio * guideMapLatHalfSpan * 2);
+    final longitude =
+        -guideMapLngHalfSpan + (xRatio * guideMapLngHalfSpan * 2);
+
+    return LatLng(latitude, longitude);
+  }
 
   Offset _fallbackProject(double lat, double lng) {
     if (locations.isEmpty) {
